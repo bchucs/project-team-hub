@@ -1,7 +1,12 @@
 .DS_Store
 .env
+/.claude/
 /node_modules/
 
 # React Router
 /.react-router/
 /build/
+
+/generated/prisma
+
+/generated/prisma
