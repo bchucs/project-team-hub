@@ -1,13 +1,74 @@
 datasource db {
   provider = "postgresql"
-  url = env("DATABASE_URL")
 }
 
 generator client {
-  provider = "prisma-client"
-  output   = "../generated/prisma"
+  provider = "prisma-client-js"
 }
 
-datasource db {
-  provider = "postgresql"
+model User {
+  id               String        @id @default(cuid())
+  name             String
+  netId            String        @unique
+  cornellEmail     String        @unique
+  personalEmail    String        @unique
+  phoneNumber      String        @unique
+  expectedGradYear Int
+  majors           String[]
+  minors           String[]
+  resumeUrl        String?
+  applications     Application[]
+}
+
+model Team {
+  id        String @id @default(cuid())
+  name      String @unique
+  website   String @unique
+  instagram String @unique
+  category  String
+
+  essayPrompts EssayPrompt[]
+  applications Application[]
+}
+
+model EssayPrompt {
+  id       String @id @default(cuid())
+  teamId   String
+  question String
+  maxWords Int
+  order    Int // for displaying prompts in order
+
+  team      Team            @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  responses EssayResponse[]
+}
+
+model Application {
+  id          String    @id @default(cuid())
+  userId      String
+  teamId      String
+  status      String    @default("DRAFT")
+  createdAt   DateTime  @default(now())
+  submittedAt DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  essayResponses EssayResponse[]
+
+  @@unique([userId, teamId])
+}
+
+model EssayResponse {
+  id            String @id @default(cuid())
+  applicationId String
+  promptId      String
+  content       String @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  application Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  prompt      EssayPrompt @relation(fields: [promptId], references: [id], onDelete: Cascade)
+
+  @@unique([applicationId, promptId])
 }

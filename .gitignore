@@ -2,7 +2,7 @@
 .env
 /.claude/
 /node_modules/
-
+CLAUDE.md
 # React Router
 /.react-router/
 /build/
