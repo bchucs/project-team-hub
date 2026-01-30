@@ -1,0 +1,447 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../node_modules/.prisma/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// =============================================================================
+// ENUMS
+// =============================================================================
+
+enum TeamCategory {
+  CAR
+  XR
+  BIOMEDICAL_ENGINEERING
+  STRUCTURAL_ENGINEERING
+  FLIGHT
+  BOAT
+  ENVIRONMENTAL
+  SOFTWARE
+  DRONE_AND_BOT
+  AUTONOMOUS_WATER
+  RACING
+  AEROSPACE
+  TRANSPORTATION
+}
+
+enum CollegeYear {
+  FRESHMAN
+  SOPHOMORE
+  JUNIOR
+  SENIOR
+}
+
+enum College {
+  ENGINEERING
+  ARTS_AND_SCIENCES
+  AGRICULTURE_AND_LIFE_SCIENCES
+  ARCHITECTURE_ART_AND_PLANNING
+  BUSINESS
+  HUMAN_ECOLOGY
+  ILR
+}
+
+enum UserRole {
+  STUDENT
+  TEAM_MEMBER
+  TEAM_LEAD
+  PLATFORM_ADMIN
+}
+
+enum ApplicationStatus {
+  DRAFT
+  SUBMITTED
+  UNDER_REVIEW
+  INTERVIEW
+  OFFER
+  ACCEPTED
+  REJECTED
+  WITHDRAWN
+}
+
+enum QuestionType {
+  SHORT_TEXT
+  LONG_TEXT
+  SELECT
+  MULTI_SELECT
+  FILE_UPLOAD
+}
+
+enum EventType {
+  INFO_SESSION
+  DEADLINE
+  INTERVIEW
+  DECISION_RELEASE
+  OTHER
+}
+
+enum TeamMemberRole {
+  MEMBER
+  REVIEWER
+  LEAD
+}
+
+// =============================================================================
+// USER & STUDENT PROFILE
+// =============================================================================
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  name      String
+  role      UserRole @default(STUDENT)
+  avatarUrl String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  studentProfile  StudentProfile?
+  teamMemberships TeamMembership[]
+  reviewScores    ReviewScore[]
+  reviewNotes     ReviewNote[]
+
+  // Audit relations (things this user created/updated)
+  teamsCreated     Team[]                @relation("TeamsCreated")
+  teamsUpdated     Team[]                @relation("TeamsUpdated")
+  cyclesCreated    RecruitingCycle[]     @relation("CyclesCreated")
+  cyclesUpdated    RecruitingCycle[]     @relation("CyclesUpdated")
+  questionsCreated ApplicationQuestion[] @relation("QuestionsCreated")
+  questionsUpdated ApplicationQuestion[] @relation("QuestionsUpdated")
+}
+
+model StudentProfile {
+  id     String @id @default(uuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Basic info
+  firstName          String
+  lastName           String
+  netId              String  @unique // Cornell NetID (e.g., "abc123")
+  year               CollegeYear
+  college            College
+  major              String
+  minor              String?
+  expectedGraduation String // e.g., "2026-Spring"
+
+  // Profile content
+  bio       String?
+  skills    String[] // Array of skill tags
+  resumeUrl String?
+
+  // Links
+  linkedinUrl  String?
+  githubUrl    String?
+  portfolioUrl String?
+
+  // Status
+  isComplete Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  applications Application[]
+}
+
+// =============================================================================
+// TEAM & SUBTEAM
+// =============================================================================
+
+model Team {
+  id   String @id @default(uuid())
+  slug String @unique // URL-friendly identifier
+
+  // Basic info
+  name             String
+  description      String
+  shortDescription String
+  category         TeamCategory
+  tags             String[]
+
+  // Visuals
+  logoUrl    String?
+  bannerUrl  String?
+  brandColor String @default("#000000") // Hex color
+
+  // Team details
+  memberCount Int  @default(0)
+  foundedYear Int?
+
+  // Contact
+  contactEmail    String
+  websiteUrl      String?
+  instagramHandle String?
+
+  // Status
+  isActive     Boolean @default(true)
+  isRecruiting Boolean @default(false)
+
+  // Audit
+  createdById String
+  createdBy   User   @relation("TeamsCreated", fields: [createdById], references: [id])
+  updatedById String?
+  updatedBy   User?  @relation("TeamsUpdated", fields: [updatedById], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  subteams         Subteam[]
+  recruitingCycles RecruitingCycle[]
+  memberships      TeamMembership[]
+  events           Event[]
+}
+
+model Subteam {
+  id          String  @id @default(uuid())
+  teamId      String
+  team        Team    @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  name        String
+  description String?
+
+  isRecruiting  Boolean @default(true)
+  openPositions Int?
+
+  // Relations
+  questions    ApplicationQuestion[]
+  applications Application[]
+}
+
+// =============================================================================
+// RECRUITING CYCLE
+// =============================================================================
+
+model RecruitingCycle {
+  id       String @id @default(uuid())
+  teamId   String
+  team     Team   @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  // Cycle info
+  name     String // e.g., "Spring 2024 Recruitment"
+  semester String // e.g., "2024-Spring"
+
+  // Timeline
+  applicationOpenDate DateTime
+  applicationDeadline DateTime
+  reviewDeadline      DateTime?
+  decisionDate        DateTime?
+
+  // Settings
+  isActive             Boolean @default(true)
+  allowLateSubmissions Boolean @default(false)
+  requireResume        Boolean @default(true)
+
+  // Audit
+  createdById String
+  createdBy   User   @relation("CyclesCreated", fields: [createdById], references: [id])
+  updatedById String?
+  updatedBy   User?  @relation("CyclesUpdated", fields: [updatedById], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  questions      ApplicationQuestion[]
+  applications   Application[]
+  events         Event[]
+  interviewSlots InterviewSlot[]
+}
+
+// =============================================================================
+// APPLICATION QUESTIONS
+// =============================================================================
+
+model ApplicationQuestion {
+  id        String  @id @default(uuid())
+  cycleId   String
+  cycle     RecruitingCycle @relation(fields: [cycleId], references: [id], onDelete: Cascade)
+  subteamId String?
+  subteam   Subteam? @relation(fields: [subteamId], references: [id], onDelete: Cascade)
+
+  // Question content
+  question    String
+  description String? // Helper text
+  type        QuestionType
+
+  // Constraints
+  isRequired Boolean @default(true)
+  charLimit  Int?
+  wordLimit  Int?
+  options    String[] // For select/multi_select types
+
+  // Display order
+  order Int @default(0)
+
+  // Audit
+  createdById String
+  createdBy   User   @relation("QuestionsCreated", fields: [createdById], references: [id])
+  updatedById String?
+  updatedBy   User?  @relation("QuestionsUpdated", fields: [updatedById], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  responses ApplicationResponse[]
+}
+
+// =============================================================================
+// APPLICATION & RESPONSES
+// =============================================================================
+
+model Application {
+  id        String         @id @default(uuid())
+  studentId String
+  student   StudentProfile @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  cycleId   String
+  cycle     RecruitingCycle @relation(fields: [cycleId], references: [id], onDelete: Cascade)
+  subteamId String?
+  subteam   Subteam? @relation(fields: [subteamId], references: [id])
+
+  // Status
+  status ApplicationStatus @default(DRAFT)
+
+  // Timestamps
+  submittedAt DateTime?
+  lastSavedAt DateTime  @default(now())
+
+  // Progress tracking
+  completionPercent Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  responses     ApplicationResponse[]
+  reviewScores  ReviewScore[]
+  reviewNotes   ReviewNote[]
+  interviewSlot InterviewSlot?
+
+  @@unique([studentId, cycleId]) // One application per student per cycle
+}
+
+model ApplicationResponse {
+  id            String      @id @default(uuid())
+  applicationId String
+  application   Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  questionId    String
+  question      ApplicationQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  // Response content (populated based on question type)
+  textResponse    String?
+  selectedOptions String[]
+  fileUrl         String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([applicationId, questionId]) // One response per question per application
+}
+
+// =============================================================================
+// REVIEW & EVALUATION
+// =============================================================================
+
+model ReviewScore {
+  id            String      @id @default(uuid())
+  applicationId String
+  application   Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  reviewerId    String
+  reviewer      User        @relation(fields: [reviewerId], references: [id], onDelete: Cascade)
+
+  // Scoring (1-5)
+  overallScore Int
+  criteria     Json? // { "technical": 4, "communication": 5, ... }
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([applicationId, reviewerId]) // One score per reviewer per application
+}
+
+model ReviewNote {
+  id            String      @id @default(uuid())
+  applicationId String
+  application   Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  authorId      String
+  author        User        @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  content   String
+  isPrivate Boolean @default(false) // Only visible to author vs all reviewers
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// =============================================================================
+// EVENTS & SCHEDULING
+// =============================================================================
+
+model Event {
+  id      String  @id @default(uuid())
+  teamId  String?
+  team    Team?   @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  cycleId String?
+  cycle   RecruitingCycle? @relation(fields: [cycleId], references: [id], onDelete: Cascade)
+
+  // Event info
+  title       String
+  description String?
+  type        EventType
+
+  // Timing
+  startTime DateTime
+  endTime   DateTime?
+  isAllDay  Boolean @default(false)
+
+  // Location
+  location    String?
+  virtualLink String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model InterviewSlot {
+  id      String          @id @default(uuid())
+  cycleId String
+  cycle   RecruitingCycle @relation(fields: [cycleId], references: [id], onDelete: Cascade)
+
+  // Timing
+  startTime DateTime
+  endTime   DateTime
+
+  // Assignment
+  applicationId  String?      @unique
+  application    Application? @relation(fields: [applicationId], references: [id])
+  interviewerIds String[]
+
+  // Location
+  location    String?
+  virtualLink String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// =============================================================================
+// TEAM MEMBERSHIP (for access control)
+// =============================================================================
+
+model TeamMembership {
+  id       String         @id @default(uuid())
+  teamId   String
+  team     Team           @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  userId   String
+  user     User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role     TeamMemberRole @default(MEMBER)
+  joinedAt DateTime       @default(now())
+
+  @@unique([teamId, userId])
+}

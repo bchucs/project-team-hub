@@ -1,0 +1,47 @@
+import { notFound } from "next/navigation"
+import { ApplicationForm } from "@/components/application-form"
+import { getTeamBySlug, getTeams } from "@/lib/queries"
+import { toTeamDetailViewModel } from "@/lib/view-models"
+
+interface PageProps {
+  params: Promise<{ slug: string }>
+}
+
+export async function generateStaticParams() {
+  const teams = await getTeams()
+  return teams.map((team) => ({
+    slug: team.slug,
+  }))
+}
+
+export async function generateMetadata({ params }: PageProps) {
+  const { slug } = await params
+  const team = await getTeamBySlug(slug)
+
+  if (!team) {
+    return { title: "Team Not Found" }
+  }
+
+  return {
+    title: `Apply to ${team.name} | Cornell Project Teams`,
+    description: `Submit your application to join ${team.name}`,
+  }
+}
+
+export default async function ApplyPage({ params }: PageProps) {
+  const { slug } = await params
+  const team = await getTeamBySlug(slug)
+
+  if (!team) {
+    notFound()
+  }
+
+  // Check if team is recruiting
+  if (!team.isRecruiting) {
+    notFound()
+  }
+
+  const teamViewModel = toTeamDetailViewModel(team)
+
+  return <ApplicationForm team={teamViewModel} />
+}
