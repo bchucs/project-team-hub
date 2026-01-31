@@ -1,7 +1,9 @@
-import { notFound } from "next/navigation"
+import { notFound, redirect } from "next/navigation"
 import { ApplicationForm } from "@/components/application-form"
 import { getTeamBySlug, getTeams } from "@/lib/queries"
 import { toTeamDetailViewModel } from "@/lib/view-models"
+import { requireAuth } from "@/lib/auth-utils"
+import { db } from "@/lib/db"
 
 interface PageProps {
   params: Promise<{ slug: string }>
@@ -30,6 +32,23 @@ export async function generateMetadata({ params }: PageProps) {
 
 export default async function ApplyPage({ params }: PageProps) {
   const { slug } = await params
+  const user = await requireAuth()
+
+  // Ensure user is a student
+  if (user.role !== "STUDENT") {
+    redirect("/")
+  }
+
+  // Get student profile
+  const profile = await db.studentProfile.findUnique({
+    where: { userId: user.id },
+  })
+
+  // If no profile exists, redirect to profile setup
+  if (!profile) {
+    redirect("/profile")
+  }
+
   const team = await getTeamBySlug(slug)
 
   if (!team) {
@@ -43,5 +62,15 @@ export default async function ApplyPage({ params }: PageProps) {
 
   const teamViewModel = toTeamDetailViewModel(team)
 
-  return <ApplicationForm team={teamViewModel} />
+  return <ApplicationForm 
+    team={teamViewModel} 
+    studentId={profile.id} 
+    user={{
+      id: user.id,
+      name: user.name || "",
+      email: user.email || "",
+      role: user.role,
+      avatarUrl: user.avatarUrl
+    }}
+  />
 }

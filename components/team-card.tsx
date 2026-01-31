@@ -97,7 +97,7 @@ export function TeamCard({ team, application, onBookmark, isBookmarked }: TeamCa
       >
         <Badge
           variant="secondary"
-          className="absolute top-3 right-3 bg-white/90 text-foreground text-xs font-medium"
+          className="absolute top-3 right-3 bg-background/90 text-foreground text-xs font-medium backdrop-blur-sm"
         >
           {team.category}
         </Badge>

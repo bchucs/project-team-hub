@@ -1,18 +1,27 @@
 import { PrismaClient, TeamCategory, QuestionType } from "@prisma/client"
+import { hashPassword } from "../lib/password"
+import { clearDatabase } from "./clear"
 
 const prisma = new PrismaClient()
 
 async function main() {
+  // Clear existing data first
+  await clearDatabase()
+  
   console.log("🌱 Seeding database...")
 
   // Create a platform admin user (needed for createdBy relations)
+  const hashedPassword = await hashPassword("password123")
   const adminUser = await prisma.user.upsert({
     where: { email: "admin@cornell.edu" },
-    update: {},
+    update: {
+      password: hashedPassword,
+    },
     create: {
       email: "admin@cornell.edu",
       name: "Platform Admin",
       role: "PLATFORM_ADMIN",
+      password: hashedPassword,
     },
   })
 
@@ -288,12 +297,15 @@ async function main() {
   // Create a sample student user with a predictable ID for testing
   const studentUser = await prisma.user.upsert({
     where: { email: "student@cornell.edu" },
-    update: {},
+    update: {
+      password: hashedPassword,
+    },
     create: {
       id: "demo-student-user-id",
       email: "student@cornell.edu",
       name: "Demo Student",
       role: "STUDENT",
+      password: hashedPassword,
     },
   })
 
@@ -316,6 +328,120 @@ async function main() {
   })
 
   console.log("✓ Created sample student")
+
+  // Create a demo team leader with a predictable ID for testing
+  const teamLeaderUser = await prisma.user.upsert({
+    where: { email: "leader@cornell.edu" },
+    update: {
+      password: hashedPassword,
+    },
+    create: {
+      id: "demo-team-leader-id",
+      email: "leader@cornell.edu",
+      name: "Demo Team Leader",
+      role: "TEAM_LEAD",
+      password: hashedPassword,
+    },
+  })
+
+  // Link team leader to Cornell AppDev
+  const appDevTeam = await prisma.team.findUnique({ where: { slug: "cornell-appdev" } })
+  if (appDevTeam) {
+    await prisma.teamMembership.upsert({
+      where: {
+        teamId_userId: {
+          userId: teamLeaderUser.id,
+          teamId: appDevTeam.id,
+        },
+      },
+      update: {},
+      create: {
+        userId: teamLeaderUser.id,
+        teamId: appDevTeam.id,
+        role: "LEAD",
+        joinedAt: new Date("2023-09-01"),
+      },
+    })
+
+    // Get the active recruiting cycle for AppDev
+    const appDevCycle = await prisma.recruitingCycle.findFirst({
+      where: { teamId: appDevTeam.id, isActive: true },
+    })
+
+    if (appDevCycle) {
+      // Create sample applications for AppDev
+      const sampleApplicants = [
+        { firstName: "Alex", lastName: "Johnson", netId: "aj456", email: "aj456@cornell.edu", year: "SOPHOMORE" as const, major: "Computer Science", subteam: "iOS" },
+        { firstName: "Maria", lastName: "Garcia", netId: "mg789", email: "mg789@cornell.edu", year: "JUNIOR" as const, major: "Information Science", subteam: "Backend" },
+        { firstName: "James", lastName: "Chen", netId: "jc123", email: "jc123@cornell.edu", year: "FRESHMAN" as const, major: "Computer Science", subteam: "iOS" },
+        { firstName: "Emily", lastName: "Brown", netId: "eb234", email: "eb234@cornell.edu", year: "SENIOR" as const, major: "Computer Science", subteam: "Android" },
+        { firstName: "David", lastName: "Kim", netId: "dk567", email: "dk567@cornell.edu", year: "SOPHOMORE" as const, major: "Computer Science", subteam: "Backend" },
+        { firstName: "Sarah", lastName: "Miller", netId: "sm890", email: "sm890@cornell.edu", year: "JUNIOR" as const, major: "Information Science", subteam: "Product Design" },
+        { firstName: "Michael", lastName: "Lee", netId: "ml111", email: "ml111@cornell.edu", year: "FRESHMAN" as const, major: "Computer Science", subteam: "iOS" },
+        { firstName: "Lisa", lastName: "Wang", netId: "lw222", email: "lw222@cornell.edu", year: "JUNIOR" as const, major: "Computer Science", subteam: "Backend" },
+      ]
+
+      const statuses = ["SUBMITTED", "UNDER_REVIEW", "INTERVIEW", "OFFER", "ACCEPTED", "REJECTED"] as const
+
+      for (let i = 0; i < sampleApplicants.length; i++) {
+        const applicant = sampleApplicants[i]
+
+        // Create user for applicant
+        const applicantUser = await prisma.user.upsert({
+          where: { email: applicant.email },
+          update: {},
+          create: {
+            email: applicant.email,
+            name: `${applicant.firstName} ${applicant.lastName}`,
+            role: "STUDENT",
+          },
+        })
+
+        // Create student profile with predictable ID
+        const profile = await prisma.studentProfile.upsert({
+          where: { userId: applicantUser.id },
+          update: {},
+          create: {
+            id: `sample-profile-${i}`,
+            userId: applicantUser.id,
+            firstName: applicant.firstName,
+            lastName: applicant.lastName,
+            netId: applicant.netId,
+            year: applicant.year,
+            college: "ENGINEERING",
+            major: applicant.major,
+            expectedGraduation: "2027-Spring",
+            skills: ["JavaScript", "React", "Swift"],
+            isComplete: true,
+          },
+        })
+
+        // Find subteam
+        const subteam = await prisma.subteam.findFirst({
+          where: { teamId: appDevTeam.id, name: applicant.subteam },
+        })
+
+        // Create application - studentId references StudentProfile.id
+        await prisma.application.upsert({
+          where: { id: `sample-app-${i}` },
+          update: {},
+          create: {
+            id: `sample-app-${i}`,
+            studentId: profile.id,
+            cycleId: appDevCycle.id,
+            subteamId: subteam?.id || null,
+            status: statuses[i % statuses.length],
+            completionPercent: 100,
+            submittedAt: new Date(Date.now() - (i + 1) * 24 * 60 * 60 * 1000), // Stagger submission dates
+          },
+        })
+      }
+
+      console.log("✓ Created sample applications for Cornell AppDev")
+    }
+  }
+
+  console.log("✓ Created demo team leader")
 
   console.log("\n✅ Seeding complete!")
 }

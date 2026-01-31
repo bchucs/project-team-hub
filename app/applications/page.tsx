@@ -1,13 +1,39 @@
 import { ApplicationsDashboard } from "@/components/applications-dashboard"
 import { getStudentApplications } from "@/lib/queries"
-
-// TODO: Get actual user ID from auth
-const DEMO_USER_ID = "demo-student-user-id"
+import { requireAuth } from "@/lib/auth-utils"
+import { db } from "@/lib/db"
+import { redirect } from "next/navigation"
 
 export const dynamic = "force-dynamic"
 
 export default async function ApplicationsPage() {
-  const applications = await getStudentApplications(DEMO_USER_ID)
+  const user = await requireAuth()
 
-  return <ApplicationsDashboard applications={applications} />
+  // Ensure user is a student
+  if (user.role !== "STUDENT") {
+    redirect("/")
+  }
+
+  // Get student profile
+  const profile = await db.studentProfile.findUnique({
+    where: { userId: user.id },
+  })
+
+  // If no profile exists, redirect to profile setup
+  if (!profile) {
+    redirect("/profile")
+  }
+
+  const applications = await getStudentApplications(profile.id)
+
+  return <ApplicationsDashboard 
+    applications={applications} 
+    user={{
+      id: user.id,
+      name: user.name || "",
+      email: user.email || "",
+      role: user.role,
+      avatarUrl: user.avatarUrl
+    }} 
+  />
 }

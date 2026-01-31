@@ -23,6 +23,14 @@ import { saveApplicationDraft, submitApplication } from "@/lib/actions"
 
 interface ApplicationFormProps {
   team: TeamDetailViewModel
+  studentId: string
+  user?: {
+    id: string
+    name: string
+    email: string
+    role: string
+    avatarUrl?: string | null
+  }
 }
 
 interface Question {
@@ -98,7 +106,7 @@ const steps = [
   { id: "review", label: "Review & Submit" },
 ]
 
-export function ApplicationForm({ team }: ApplicationFormProps) {
+export function ApplicationForm({ team, studentId, user }: ApplicationFormProps) {
   const router = useRouter()
   const [currentStep, setCurrentStep] = useState(0)
   const [answers, setAnswers] = useState<Record<string, string>>({})
@@ -119,8 +127,6 @@ export function ApplicationForm({ team }: ApplicationFormProps) {
     async (newAnswers: Record<string, string>) => {
       setIsSaving(true)
       try {
-        // TODO: Get actual student ID from auth context
-        const studentId = "demo-student-user-id"
         const result = await saveApplicationDraft(studentId, {
           teamId: team.id,
           subteamId: newAnswers.subteam || null,
@@ -147,7 +153,7 @@ export function ApplicationForm({ team }: ApplicationFormProps) {
         setIsSaving(false)
       }
     },
-    [team.id]
+    [team.id, studentId]
   )
 
   const updateAnswer = (questionId: string, value: string) => {
@@ -210,7 +216,7 @@ export function ApplicationForm({ team }: ApplicationFormProps) {
 
   return (
     <div className="min-h-screen bg-background">
-      <Header />
+      <Header user={user} />
       <main className="mx-auto max-w-3xl px-4 py-6 sm:px-6">
         <Link
           href={`/teams/${team.slug}`}

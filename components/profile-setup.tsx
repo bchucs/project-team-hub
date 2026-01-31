@@ -65,7 +65,7 @@ interface ProfileSetupProps {
   userId: string
 }
 
-export function ProfileSetup({ existingProfile, userId }: ProfileSetupProps) {
+export function ProfileSetup({ existingProfile, userId, user }: ProfileSetupProps) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [saved, setSaved] = useState(false)
@@ -152,7 +152,7 @@ export function ProfileSetup({ existingProfile, userId }: ProfileSetupProps) {
 
   return (
     <div className="min-h-screen bg-background">
-      <Header />
+      <Header user={user} />
       <main className="mx-auto max-w-3xl px-4 py-8 sm:px-6">
         <div className="mb-8">
           <h1 className="text-2xl font-bold text-foreground">Student Profile</h1>

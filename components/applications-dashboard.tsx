@@ -1,15 +1,16 @@
 "use client"
 
 import Link from "next/link"
-import { 
-  Clock, 
-  Calendar, 
-  FileText, 
-  CheckCircle2, 
-  AlertCircle, 
+import {
+  Clock,
+  Calendar,
+  FileText,
+  CheckCircle2,
+  AlertCircle,
   ChevronRight,
   XCircle,
-  CalendarDays
+  CalendarDays,
+  Send
 } from "lucide-react"
 import { Header } from "@/components/header"
 import { Button } from "@/components/ui/button"
@@ -17,46 +18,40 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { applications, teams, deadlines } from "@/lib/data"
-import type { Application, ApplicationStatus } from "@/lib/types"
+import type { ApplicationStatus } from "@prisma/client"
 
-const allApplications: (Application & { category?: string })[] = [
-  ...applications,
-  {
-    id: "4",
-    teamId: "4",
-    teamName: "Cornell AppDev",
-    subteam: "iOS Team",
-    status: "interview" as ApplicationStatus,
-    progress: 100,
-    dueDate: "Feb 15",
-    submittedDate: "Jan 25",
-  },
-  {
-    id: "5",
-    teamId: "5",
-    teamName: "Health Tech Initiative",
-    subteam: "Software Team",
-    status: "offer" as ApplicationStatus,
-    progress: 100,
-    dueDate: "Feb 10",
-    submittedDate: "Jan 20",
-  },
-  {
-    id: "6",
-    teamId: "6",
-    teamName: "Solar Car Team",
-    subteam: "Electrical Team",
-    status: "rejected" as ApplicationStatus,
-    progress: 100,
-    dueDate: "Feb 5",
-    submittedDate: "Jan 15",
-  },
-]
+// Type for the application data from the database query
+type ApplicationWithDetails = {
+  id: string
+  status: ApplicationStatus
+  completionPercent: number
+  submittedAt: Date | null
+  lastSavedAt: Date | null
+  createdAt: Date
+  updatedAt: Date
+  cycle: {
+    applicationDeadline: Date
+    team: {
+      id: string
+      name: string
+      slug: string
+      logoUrl: string | null
+      brandColor: string
+    }
+  }
+  subteam: {
+    id: string
+    name: string
+  } | null
+}
+
+interface ApplicationsDashboardProps {
+  applications: ApplicationWithDetails[]
+}
 
 function getStatusConfig(status: ApplicationStatus) {
   switch (status) {
-    case "draft":
+    case "DRAFT":
       return {
         label: "Draft",
         icon: FileText,
@@ -64,31 +59,31 @@ function getStatusConfig(status: ApplicationStatus) {
         bgColor: "bg-muted",
         borderColor: "border-border",
       }
-    case "in-progress":
+    case "SUBMITTED":
       return {
-        label: "In Progress",
-        icon: Clock,
+        label: "Submitted",
+        icon: Send,
         color: "text-blue-600",
         bgColor: "bg-blue-50",
         borderColor: "border-blue-200",
       }
-    case "submitted":
+    case "UNDER_REVIEW":
       return {
-        label: "Submitted",
-        icon: CheckCircle2,
-        color: "text-emerald-600",
-        bgColor: "bg-emerald-50",
-        borderColor: "border-emerald-200",
-      }
-    case "interview":
-      return {
-        label: "Interview Scheduled",
-        icon: CalendarDays,
+        label: "Under Review",
+        icon: Clock,
         color: "text-amber-600",
         bgColor: "bg-amber-50",
         borderColor: "border-amber-200",
       }
-    case "offer":
+    case "INTERVIEW":
+      return {
+        label: "Interview",
+        icon: CalendarDays,
+        color: "text-purple-600",
+        bgColor: "bg-purple-50",
+        borderColor: "border-purple-200",
+      }
+    case "OFFER":
       return {
         label: "Offer Received",
         icon: CheckCircle2,
@@ -96,7 +91,15 @@ function getStatusConfig(status: ApplicationStatus) {
         bgColor: "bg-emerald-50",
         borderColor: "border-emerald-200",
       }
-    case "rejected":
+    case "ACCEPTED":
+      return {
+        label: "Accepted",
+        icon: CheckCircle2,
+        color: "text-emerald-600",
+        bgColor: "bg-emerald-50",
+        borderColor: "border-emerald-200",
+      }
+    case "REJECTED":
       return {
         label: "Not Selected",
         icon: XCircle,
@@ -104,9 +107,17 @@ function getStatusConfig(status: ApplicationStatus) {
         bgColor: "bg-muted",
         borderColor: "border-border",
       }
+    case "WITHDRAWN":
+      return {
+        label: "Withdrawn",
+        icon: XCircle,
+        color: "text-muted-foreground",
+        bgColor: "bg-muted",
+        borderColor: "border-border",
+      }
     default:
       return {
-        label: "Not Started",
+        label: "Unknown",
         icon: AlertCircle,
         color: "text-muted-foreground",
         bgColor: "bg-muted",
@@ -115,10 +126,19 @@ function getStatusConfig(status: ApplicationStatus) {
   }
 }
 
-function ApplicationCard({ application }: { application: Application }) {
+function formatDate(date: Date) {
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  }).format(date)
+}
+
+function ApplicationCard({ application }: { application: ApplicationWithDetails }) {
   const statusConfig = getStatusConfig(application.status)
   const StatusIcon = statusConfig.icon
-  const team = teams.find((t) => t.id === application.teamId)
+  const team = application.cycle.team
+  const isActive = application.status === "DRAFT"
 
   return (
     <Card className={`border ${statusConfig.borderColor} hover:shadow-md transition-shadow`}>
@@ -126,53 +146,66 @@ function ApplicationCard({ application }: { application: Application }) {
         <div className="flex items-start justify-between gap-4">
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-1">
-              <h3 className="font-semibold text-foreground truncate">{application.teamName}</h3>
-              <Badge 
-                variant="outline" 
+              <div
+                className="h-8 w-8 rounded-lg flex items-center justify-center text-white text-sm font-bold shrink-0"
+                style={{ backgroundColor: team.brandColor }}
+              >
+                {team.name.charAt(0)}
+              </div>
+              <h3 className="font-semibold text-foreground truncate">{team.name}</h3>
+              <Badge
+                variant="outline"
                 className={`${statusConfig.bgColor} ${statusConfig.color} ${statusConfig.borderColor} shrink-0`}
               >
                 <StatusIcon className="h-3 w-3 mr-1" />
                 {statusConfig.label}
               </Badge>
             </div>
-            <p className="text-sm text-muted-foreground">{application.subteam}</p>
-            
-            {(application.status === "draft" || application.status === "in-progress") && (
-              <div className="mt-3 space-y-1.5">
+            {application.subteam && (
+              <p className="text-sm text-muted-foreground ml-10">{application.subteam.name}</p>
+            )}
+
+            {isActive && (
+              <div className="mt-3 space-y-1.5 ml-10">
                 <div className="flex justify-between text-xs text-muted-foreground">
-                  <span>Progress: {application.progress}%</span>
-                  <span>Due: {application.dueDate}</span>
+                  <span>Progress: {application.completionPercent}%</span>
+                  <span>Due: {formatDate(application.cycle.applicationDeadline)}</span>
                 </div>
-                <Progress value={application.progress} className="h-1.5" />
+                <Progress value={application.completionPercent} className="h-1.5" />
               </div>
             )}
 
-            {application.status === "submitted" && (
-              <p className="text-xs text-muted-foreground mt-2">
-                Submitted on {application.submittedDate}
+            {application.status === "SUBMITTED" && application.submittedAt && (
+              <p className="text-xs text-muted-foreground mt-2 ml-10">
+                Submitted on {formatDate(application.submittedAt)}
               </p>
             )}
 
-            {application.status === "interview" && (
-              <div className="mt-3 p-2 rounded bg-amber-50 border border-amber-200">
-                <p className="text-xs font-medium text-amber-800">
-                  Interview: Feb 20, 2024 at 3:00 PM
+            {application.status === "UNDER_REVIEW" && (
+              <p className="text-xs text-muted-foreground mt-2 ml-10">
+                Your application is being reviewed
+              </p>
+            )}
+
+            {application.status === "INTERVIEW" && (
+              <div className="mt-3 ml-10 p-2 rounded bg-purple-50 border border-purple-200">
+                <p className="text-xs font-medium text-purple-800">
+                  Interview scheduled - check your email for details
                 </p>
-                <p className="text-xs text-amber-600">Rhodes Hall 203</p>
               </div>
             )}
 
-            {application.status === "offer" && (
-              <div className="mt-3 p-2 rounded bg-emerald-50 border border-emerald-200">
+            {application.status === "OFFER" && (
+              <div className="mt-3 ml-10 p-2 rounded bg-emerald-50 border border-emerald-200">
                 <p className="text-xs font-medium text-emerald-800">
-                  Congratulations! You&apos;ve been accepted.
+                  Congratulations! You&apos;ve received an offer.
                 </p>
-                <p className="text-xs text-emerald-600">Respond by Feb 25, 2024</p>
+                <p className="text-xs text-emerald-600">Check your email to respond</p>
               </div>
             )}
           </div>
-          
-          <Link href={team ? `/apply/${team.id}` : "#"}>
+
+          <Link href={`/apply/${team.slug}`}>
             <Button variant="ghost" size="icon" className="shrink-0">
               <ChevronRight className="h-5 w-5 text-muted-foreground" />
               <span className="sr-only">View application</span>
@@ -184,54 +217,71 @@ function ApplicationCard({ application }: { application: Application }) {
   )
 }
 
-function DeadlineCard({ deadline }: { deadline: typeof deadlines[0] }) {
-  const [day, month] = deadline.date.split(" ")
-  const isInterview = deadline.type === "interview"
-  
+function UpcomingDeadlines({ applications }: { applications: ApplicationWithDetails[] }) {
+  // Get draft applications with upcoming deadlines
+  const upcomingDeadlines = applications
+    .filter((app) => app.status === "DRAFT")
+    .sort((a, b) => a.cycle.applicationDeadline.getTime() - b.cycle.applicationDeadline.getTime())
+    .slice(0, 5)
+
+  if (upcomingDeadlines.length === 0) {
+    return (
+      <p className="text-sm text-muted-foreground text-center py-4">
+        No upcoming deadlines
+      </p>
+    )
+  }
+
   return (
-    <div className="flex items-center gap-4 p-3 rounded-lg border border-border bg-card">
-      <div className="text-center w-12">
-        <p className="text-xl font-bold text-primary">{day}</p>
-        <p className="text-xs text-muted-foreground uppercase">{month}</p>
-      </div>
-      <div className="flex-1 min-w-0">
-        <p className="font-medium text-foreground truncate">{deadline.teamName}</p>
-        <p className="text-sm text-muted-foreground">
-          {isInterview ? `Technical interview at ${deadline.time}` : `Application due at ${deadline.time}`}
-        </p>
-      </div>
-      <div className={`p-2 rounded-lg ${isInterview ? "bg-amber-100" : "bg-primary/10"}`}>
-        {isInterview ? (
-          <CalendarDays className="h-5 w-5 text-amber-600" />
-        ) : (
-          <FileText className="h-5 w-5 text-primary" />
-        )}
-      </div>
+    <div className="space-y-3">
+      {upcomingDeadlines.map((app) => {
+        const deadline = app.cycle.applicationDeadline
+        const day = deadline.getDate()
+        const month = deadline.toLocaleString("en-US", { month: "short" }).toUpperCase()
+
+        return (
+          <div key={app.id} className="flex items-center gap-4 p-3 rounded-lg border border-border bg-card">
+            <div className="text-center w-12">
+              <p className="text-xl font-bold text-primary">{day}</p>
+              <p className="text-xs text-muted-foreground uppercase">{month}</p>
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="font-medium text-foreground truncate">{app.cycle.team.name}</p>
+              <p className="text-sm text-muted-foreground">
+                Application due
+              </p>
+            </div>
+            <div className="p-2 rounded-lg bg-primary/10">
+              <FileText className="h-5 w-5 text-primary" />
+            </div>
+          </div>
+        )
+      })}
     </div>
   )
 }
 
-export function ApplicationsDashboard() {
-  const activeApplications = allApplications.filter(
-    (app) => app.status === "draft" || app.status === "in-progress"
+export function ApplicationsDashboard({ applications, user }: ApplicationsDashboardProps) {
+  const activeApplications = applications.filter(
+    (app) => app.status === "DRAFT"
   )
-  const pendingApplications = allApplications.filter(
-    (app) => app.status === "submitted" || app.status === "interview"
+  const pendingApplications = applications.filter(
+    (app) => app.status === "SUBMITTED" || app.status === "UNDER_REVIEW" || app.status === "INTERVIEW"
   )
-  const completedApplications = allApplications.filter(
-    (app) => app.status === "offer" || app.status === "rejected"
+  const completedApplications = applications.filter(
+    (app) => app.status === "OFFER" || app.status === "ACCEPTED" || app.status === "REJECTED" || app.status === "WITHDRAWN"
   )
 
   const stats = {
-    total: allApplications.length,
+    total: applications.length,
     inProgress: activeApplications.length,
-    submitted: pendingApplications.length,
-    offers: allApplications.filter((app) => app.status === "offer").length,
+    pending: pendingApplications.length,
+    offers: applications.filter((app) => app.status === "OFFER" || app.status === "ACCEPTED").length,
   }
 
   return (
     <div className="min-h-screen bg-background">
-      <Header />
+      <Header user={user} />
       <main className="mx-auto max-w-5xl px-4 py-6 sm:px-6">
         <div className="mb-8">
           <h1 className="text-2xl font-bold text-foreground">My Applications</h1>
@@ -255,7 +305,7 @@ export function ApplicationsDashboard() {
           </Card>
           <Card>
             <CardContent className="pt-6">
-              <p className="text-2xl font-bold text-amber-600">{stats.submitted}</p>
+              <p className="text-2xl font-bold text-amber-600">{stats.pending}</p>
               <p className="text-sm text-muted-foreground">Under Review</p>
             </CardContent>
           </Card>
@@ -271,7 +321,7 @@ export function ApplicationsDashboard() {
           <div className="lg:col-span-2">
             <Tabs defaultValue="active" className="w-full">
               <TabsList className="bg-muted w-full sm:w-auto">
-                <TabsTrigger value="active">Active ({activeApplications.length})</TabsTrigger>
+                <TabsTrigger value="active">In Progress ({activeApplications.length})</TabsTrigger>
                 <TabsTrigger value="pending">Pending ({pendingApplications.length})</TabsTrigger>
                 <TabsTrigger value="completed">Completed ({completedApplications.length})</TabsTrigger>
               </TabsList>
@@ -283,7 +333,7 @@ export function ApplicationsDashboard() {
                 ) : (
                   <Card>
                     <CardContent className="py-8 text-center">
-                      <p className="text-muted-foreground">No active applications</p>
+                      <p className="text-muted-foreground">No applications in progress</p>
                       <Button className="mt-4" asChild>
                         <Link href="/">Browse Teams</Link>
                       </Button>
@@ -292,14 +342,30 @@ export function ApplicationsDashboard() {
                 )}
               </TabsContent>
               <TabsContent value="pending" className="mt-4 space-y-3">
-                {pendingApplications.map((app) => (
-                  <ApplicationCard key={app.id} application={app} />
-                ))}
+                {pendingApplications.length > 0 ? (
+                  pendingApplications.map((app) => (
+                    <ApplicationCard key={app.id} application={app} />
+                  ))
+                ) : (
+                  <Card>
+                    <CardContent className="py-8 text-center">
+                      <p className="text-muted-foreground">No pending applications</p>
+                    </CardContent>
+                  </Card>
+                )}
               </TabsContent>
               <TabsContent value="completed" className="mt-4 space-y-3">
-                {completedApplications.map((app) => (
-                  <ApplicationCard key={app.id} application={app} />
-                ))}
+                {completedApplications.length > 0 ? (
+                  completedApplications.map((app) => (
+                    <ApplicationCard key={app.id} application={app} />
+                  ))
+                ) : (
+                  <Card>
+                    <CardContent className="py-8 text-center">
+                      <p className="text-muted-foreground">No completed applications yet</p>
+                    </CardContent>
+                  </Card>
+                )}
               </TabsContent>
             </Tabs>
           </div>
@@ -313,10 +379,8 @@ export function ApplicationsDashboard() {
                 </CardTitle>
                 <CardDescription>Don&apos;t miss these important dates</CardDescription>
               </CardHeader>
-              <CardContent className="space-y-3">
-                {deadlines.map((deadline) => (
-                  <DeadlineCard key={deadline.id} deadline={deadline} />
-                ))}
+              <CardContent>
+                <UpcomingDeadlines applications={applications} />
               </CardContent>
             </Card>
 

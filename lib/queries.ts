@@ -187,3 +187,99 @@ export const getTeamCategories = cache(async () => {
   })
   return teams.map((t) => t.category)
 })
+
+// =============================================================================
+// ADMIN QUERIES
+// =============================================================================
+
+export const getTeamMembership = cache(async (userId: string) => {
+  const membership = await db.teamMembership.findFirst({
+    where: {
+      userId,
+      role: { in: ["LEAD", "REVIEWER"] },
+    },
+    include: {
+      team: {
+        include: {
+          subteams: true,
+          recruitingCycles: {
+            where: { isActive: true },
+            include: {
+              questions: { orderBy: { order: "asc" } },
+            },
+          },
+        },
+      },
+    },
+  })
+  return membership
+})
+
+export const getTeamApplications = cache(async (teamId: string) => {
+  const applications = await db.application.findMany({
+    where: {
+      cycle: {
+        teamId,
+        isActive: true,
+      },
+    },
+    include: {
+      student: {
+        include: {
+          user: true,
+        },
+      },
+      subteam: true,
+      responses: true,
+      reviewScores: {
+        include: {
+          reviewer: true,
+        },
+      },
+      reviewNotes: {
+        include: {
+          author: true,
+        },
+        orderBy: { createdAt: "desc" },
+      },
+    },
+    orderBy: { createdAt: "desc" },
+  })
+  return applications
+})
+
+export const getTeamAdminStats = cache(async (teamId: string) => {
+  const [total, submitted, underReview, interview, offers, accepted, rejected] = await Promise.all([
+    db.application.count({
+      where: { cycle: { teamId, isActive: true } },
+    }),
+    db.application.count({
+      where: { cycle: { teamId, isActive: true }, status: "SUBMITTED" },
+    }),
+    db.application.count({
+      where: { cycle: { teamId, isActive: true }, status: "UNDER_REVIEW" },
+    }),
+    db.application.count({
+      where: { cycle: { teamId, isActive: true }, status: "INTERVIEW" },
+    }),
+    db.application.count({
+      where: { cycle: { teamId, isActive: true }, status: "OFFER" },
+    }),
+    db.application.count({
+      where: { cycle: { teamId, isActive: true }, status: "ACCEPTED" },
+    }),
+    db.application.count({
+      where: { cycle: { teamId, isActive: true }, status: "REJECTED" },
+    }),
+  ])
+
+  return {
+    total,
+    submitted,
+    underReview,
+    interview,
+    offers,
+    accepted,
+    rejected,
+  }
+})

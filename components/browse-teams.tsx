@@ -13,15 +13,22 @@ interface BrowseTeamsProps {
   categories: string[]
   stats: RecruitingStatsViewModel
   applications?: ApplicationCardViewModel[]
+  user?: {
+    id: string
+    name: string
+    email: string
+    role: string
+    avatarUrl?: string | null
+  }
 }
 
-export function BrowseTeams({ teams, categories, stats, applications = [] }: BrowseTeamsProps) {
+export function BrowseTeams({ teams, categories, stats, applications = [], user }: BrowseTeamsProps) {
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedCategory, setSelectedCategory] = useState("All Categories")
 
   return (
     <div className="min-h-screen bg-background">
-      <Header />
+      <Header user={user} />
       <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 space-y-6">
         <StatsCards stats={stats} />
         <SearchFilters

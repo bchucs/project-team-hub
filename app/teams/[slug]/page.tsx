@@ -2,6 +2,7 @@ import { notFound } from "next/navigation"
 import { TeamDetail } from "@/components/team-detail"
 import { getTeamBySlug, getTeams } from "@/lib/queries"
 import { toTeamDetailViewModel } from "@/lib/view-models"
+import { getCurrentUser } from "@/lib/auth-utils"
 
 interface PageProps {
   params: Promise<{ slug: string }>
@@ -36,7 +37,17 @@ export default async function TeamPage({ params }: PageProps) {
     notFound()
   }
 
+  const user = await getCurrentUser()
   const teamViewModel = toTeamDetailViewModel(team)
 
-  return <TeamDetail team={teamViewModel} />
+  return <TeamDetail 
+    team={teamViewModel} 
+    user={user ? {
+      id: user.id,
+      name: user.name || "",
+      email: user.email || "",
+      role: user.role,
+      avatarUrl: user.avatarUrl
+    } : undefined}
+  />
 }

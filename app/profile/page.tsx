@@ -1,12 +1,22 @@
 import { ProfileSetup } from "@/components/profile-setup"
 import { getStudentProfile } from "@/lib/queries"
-
-// TODO: Get actual user ID from auth
-const DEMO_USER_ID = "demo-student-user-id"
+import { requireAuth } from "@/lib/auth-utils"
 
 export default async function ProfilePage() {
-  // Try to load existing profile
-  const profile = await getStudentProfile(DEMO_USER_ID)
+  const user = await requireAuth()
 
-  return <ProfileSetup existingProfile={profile} userId={DEMO_USER_ID} />
+  // Try to load existing profile
+  const profile = await getStudentProfile(user.id)
+
+  return <ProfileSetup 
+    existingProfile={profile} 
+    userId={user.id} 
+    user={{
+      id: user.id,
+      name: user.name || "",
+      email: user.email || "",
+      role: user.role,
+      avatarUrl: user.avatarUrl
+    }}
+  />
 }

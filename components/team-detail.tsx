@@ -20,9 +20,16 @@ import type { TeamDetailViewModel } from "@/lib/view-models"
 
 interface TeamDetailProps {
   team: TeamDetailViewModel
+  user?: {
+    id: string
+    name: string
+    email: string
+    role: string
+    avatarUrl?: string | null
+  }
 }
 
-export function TeamDetail({ team }: TeamDetailProps) {
+export function TeamDetail({ team, user }: TeamDetailProps) {
 
   // Format deadline if available
   const deadlineText = team.activeCycle
@@ -35,7 +42,7 @@ export function TeamDetail({ team }: TeamDetailProps) {
 
   return (
     <div className="min-h-screen bg-background">
-      <Header />
+      <Header user={user} />
       <main className="mx-auto max-w-5xl px-4 py-6 sm:px-6">
         <Link
           href="/"
@@ -51,7 +58,7 @@ export function TeamDetail({ team }: TeamDetailProps) {
         >
           <Badge
             variant="secondary"
-            className="absolute top-4 right-4 bg-white/90 text-foreground"
+            className="absolute top-4 right-4 bg-background/90 text-foreground backdrop-blur-sm"
           >
             {team.category}
           </Badge>
