@@ -24,6 +24,18 @@ import { saveApplicationDraft, submitApplication } from "@/lib/actions"
 interface ApplicationFormProps {
   team: TeamDetailViewModel
   studentId: string
+  existingApplication?: {
+    id: string
+    subteamId: string | null
+    responses: Array<{
+      textResponse: string | null
+      selectedOptions: string[]
+      question: {
+        id: string
+        question: string
+      }
+    }>
+  } | null
   user?: {
     id: string
     name: string
@@ -106,14 +118,46 @@ const steps = [
   { id: "review", label: "Review & Submit" },
 ]
 
-export function ApplicationForm({ team, studentId, user }: ApplicationFormProps) {
+export function ApplicationForm({ team, studentId, existingApplication, user }: ApplicationFormProps) {
   const router = useRouter()
   const [currentStep, setCurrentStep] = useState(0)
-  const [answers, setAnswers] = useState<Record<string, string>>({})
-  const [lastSaved, setLastSaved] = useState<Date | null>(null)
+
+  // Initialize answers from existing application if available
+  const initialAnswers: Record<string, string> = {}
+  if (existingApplication) {
+    // Add subteam if exists
+    if (existingApplication.subteamId) {
+      initialAnswers.subteam = existingApplication.subteamId
+    }
+
+    // Map responses to hardcoded question IDs
+    existingApplication.responses.forEach((response) => {
+      const questionText = response.question.question.toLowerCase()
+      let hardcodedId: string | null = null
+
+      if (questionText.includes("relevant experience")) {
+        hardcodedId = "experience"
+      } else if (questionText.includes("why are you interested")) {
+        hardcodedId = "interest"
+      } else if (questionText.includes("unique skills")) {
+        hardcodedId = "contribution"
+      } else if (questionText.includes("commit to the time")) {
+        hardcodedId = "commitment"
+      } else if (questionText.includes("anything else")) {
+        hardcodedId = "additional"
+      }
+
+      if (hardcodedId && response.textResponse) {
+        initialAnswers[hardcodedId] = response.textResponse
+      }
+    })
+  }
+
+  const [answers, setAnswers] = useState<Record<string, string>>(initialAnswers)
+  const [lastSaved, setLastSaved] = useState<Date | null>(existingApplication ? new Date() : null)
   const [isSaving, setIsSaving] = useState(false)
   const [isPending, startTransition] = useTransition()
-  const [applicationId, setApplicationId] = useState<string | null>(null)
+  const [applicationId, setApplicationId] = useState<string | null>(existingApplication?.id || null)
   const [error, setError] = useState<string | null>(null)
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 

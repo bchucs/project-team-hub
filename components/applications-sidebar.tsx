@@ -26,8 +26,14 @@ function ApplicationCard({ application }: { application: ApplicationCardViewMode
     }
   }
 
+  // Determine link based on application status
+  const isActive = application.status === "draft" || application.status === "in-progress"
+  const applicationLink = isActive
+    ? `/apply/${application.teamSlug}`
+    : `/applications/${application.id}`
+
   return (
-    <Link href={`/applications/${application.id}`}>
+    <Link href={applicationLink}>
       <div className="rounded-lg border border-border bg-card p-3 space-y-2 hover:border-primary/50 transition-colors">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">

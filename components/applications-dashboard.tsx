@@ -47,6 +47,13 @@ type ApplicationWithDetails = {
 
 interface ApplicationsDashboardProps {
   applications: ApplicationWithDetails[]
+  user?: {
+    id: string
+    name: string
+    email: string
+    role: string
+    avatarUrl?: string | null
+  }
 }
 
 function getStatusConfig(status: ApplicationStatus) {
@@ -140,6 +147,11 @@ function ApplicationCard({ application }: { application: ApplicationWithDetails 
   const team = application.cycle.team
   const isActive = application.status === "DRAFT"
 
+  // Determine link based on application status
+  const applicationLink = isActive
+    ? `/apply/${team.slug}`
+    : `/applications/${application.id}`
+
   return (
     <Card className={`border ${statusConfig.borderColor} hover:shadow-md transition-shadow`}>
       <CardContent className="p-4">
@@ -205,10 +217,10 @@ function ApplicationCard({ application }: { application: ApplicationWithDetails 
             )}
           </div>
 
-          <Link href={`/apply/${team.slug}`}>
+          <Link href={applicationLink}>
             <Button variant="ghost" size="icon" className="shrink-0">
               <ChevronRight className="h-5 w-5 text-muted-foreground" />
-              <span className="sr-only">View application</span>
+              <span className="sr-only">{isActive ? "Continue application" : "View application"}</span>
             </Button>
           </Link>
         </div>

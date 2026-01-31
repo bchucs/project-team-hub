@@ -40,7 +40,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { ThemeToggle } from "@/components/theme-toggle"
-import type { Team, Subteam, RecruitingCycle, Application, User, StudentProfile, ReviewScore, ReviewNote, ApplicationResponse } from "@prisma/client"
+import type { Team, Subteam, RecruitingCycle, Application, User, StudentProfile, ApplicationScore, ReviewNote, ApplicationResponse } from "@prisma/client"
 
 // Types for the data from database
 type ApplicationWithDetails = Application & {
@@ -48,7 +48,7 @@ type ApplicationWithDetails = Application & {
     user: User
   }
   subteam: Subteam | null
-  reviewScores: (ReviewScore & { reviewer: User })[]
+  applicationScores: (ApplicationScore & { reviewer: User })[]
   reviewNotes: (ReviewNote & { author: User })[]
   responses: ApplicationResponse[]
 }
@@ -141,8 +141,8 @@ function StageColumn({
       <div className="space-y-2">
         {applications.map((app) => {
           const profile = app.student
-          const avgRating = app.reviewScores.length > 0
-            ? Math.round(app.reviewScores.reduce((sum, s) => sum + s.overallScore, 0) / app.reviewScores.length)
+          const avgRating = app.applicationScores.length > 0
+            ? Math.round(app.applicationScores.reduce((sum, s) => sum + s.overallScore, 0) / app.applicationScores.length)
             : null
 
           return (
@@ -208,12 +208,12 @@ function ApplicantDetailPanel({
 
   const profile = application.student
   const stageConfig = pipelineStages.find((s) => s.id === application.status)
-  const avgRating = application.reviewScores.length > 0
-    ? Math.round(application.reviewScores.reduce((sum, s) => sum + s.overallScore, 0) / application.reviewScores.length)
+  const avgRating = application.applicationScores.length > 0
+    ? Math.round(application.applicationScores.reduce((sum, s) => sum + s.overallScore, 0) / application.applicationScores.length)
     : null
 
   // Find current user's existing rating
-  const existingScore = application.reviewScores.find(s => s.reviewerId === reviewerId)
+  const existingScore = application.applicationScores.find(s => s.reviewerId === reviewerId)
   const displayRating = myRating || existingScore?.overallScore || 0
 
   const handleStatusChange = (newStatus: string) => {
@@ -321,7 +321,7 @@ function ApplicantDetailPanel({
         {avgRating && (
           <div>
             <p className="text-xs text-muted-foreground uppercase tracking-wider mb-2">
-              Average Rating ({application.reviewScores.length} review{application.reviewScores.length !== 1 ? 's' : ''})
+              Average Rating ({application.applicationScores.length} review{application.applicationScores.length !== 1 ? 's' : ''})
             </p>
             <div className="flex items-center gap-1">
               {Array.from({ length: 5 }).map((_, i) => (
@@ -515,8 +515,8 @@ function ApplicantTable({
           {applications.map((app) => {
             const profile = app.student
             const stageConfig = pipelineStages.find((s) => s.id === app.status)
-            const avgRating = app.reviewScores.length > 0
-              ? Math.round(app.reviewScores.reduce((sum, s) => sum + s.overallScore, 0) / app.reviewScores.length)
+            const avgRating = app.applicationScores.length > 0
+              ? Math.round(app.applicationScores.reduce((sum, s) => sum + s.overallScore, 0) / app.applicationScores.length)
               : null
 
             return (

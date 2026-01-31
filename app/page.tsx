@@ -1,9 +1,10 @@
 import { BrowseTeams } from "@/components/browse-teams"
-import { getRecruitingTeams, getRecruitingStats, getStudentStats } from "@/lib/queries"
-import { toTeamCardViewModel } from "@/lib/view-models"
+import { getRecruitingTeams, getRecruitingStats, getStudentStats, getStudentApplications } from "@/lib/queries"
+import { toTeamCardViewModel, toApplicationCardViewModel, type ApplicationCardViewModel } from "@/lib/view-models"
 import { TEAM_CATEGORY_LABELS } from "@/lib/types"
 import { getCurrentUser } from "@/lib/auth-utils"
 import { db } from "@/lib/db"
+import { redirect } from "next/navigation"
 
 // Force dynamic rendering - don't try to pre-render during build
 export const dynamic = "force-dynamic"
@@ -11,15 +12,33 @@ export const dynamic = "force-dynamic"
 export default async function Home() {
   const user = await getCurrentUser()
 
-  // Get user-specific stats if authenticated and is a student
+  // Redirect admins to the admin dashboard (only if they have team membership)
+  if (user?.role === "TEAM_LEAD" || user?.role === "PLATFORM_ADMIN") {
+    const membership = await db.teamMembership.findFirst({
+      where: { userId: user.id },
+    })
+
+    // Only redirect if they have a team membership
+    if (membership) {
+      redirect("/admin")
+    }
+  }
+
+  // Get user-specific stats and applications if authenticated and is a student
   let userStats = { applicationsStarted: 0, submitted: 0, interviews: 0 }
+  let applicationViewModels: ApplicationCardViewModel[] = []
 
   if (user?.role === "STUDENT") {
     const profile = await db.studentProfile.findUnique({
       where: { userId: user.id },
     })
     if (profile) {
-      userStats = await getStudentStats(profile.id)
+      const [stats, applications] = await Promise.all([
+        getStudentStats(profile.id),
+        getStudentApplications(profile.id),
+      ])
+      userStats = stats
+      applicationViewModels = applications.map(toApplicationCardViewModel)
     }
   }
 
@@ -44,12 +63,13 @@ export default async function Home() {
         deadline: "February 15, 2025 at 11:59 PM",
         daysRemaining: 17,
       }}
+      applications={applicationViewModels}
       user={user ? {
         id: user.id,
         name: user.name || "",
         email: user.email || "",
         role: user.role,
-        avatarUrl: user.avatarUrl
+        avatarUrl: user.image
       } : undefined}
     />
   )

@@ -18,21 +18,40 @@ export async function saveApplicationDraft(
   studentId: string,
   input: SaveApplicationInput
 ) {
-  // For now, we'll create a simple application record
-  // In production, this would be linked to a recruiting cycle
+  // Find active recruiting cycle for this team
+  const activeCycle = await db.recruitingCycle.findFirst({
+    where: {
+      teamId: input.teamId,
+      isActive: true,
+    },
+  })
+
+  if (!activeCycle) {
+    return {
+      success: false,
+      error: "No active recruiting cycle found for this team",
+    }
+  }
 
   // Find or create the application
   const existingApp = await db.application.findFirst({
     where: {
       studentId,
-      cycle: {
-        teamId: input.teamId,
-        isActive: true,
-      },
+      cycleId: activeCycle.id,
     },
   })
 
+  let applicationId: string
+
   if (existingApp) {
+    // Prevent editing submitted applications
+    if (existingApp.status !== "DRAFT") {
+      return {
+        success: false,
+        error: "Cannot edit a submitted application",
+      }
+    }
+
     // Update existing application
     const updated = await db.application.update({
       where: { id: existingApp.id },
@@ -42,18 +61,26 @@ export async function saveApplicationDraft(
         completionPercent: calculateCompletion(input.answers),
       },
     })
-
-    // Save responses (simplified - in production, link to actual questions)
-    await saveResponses(existingApp.id, input.answers)
-
-    return { success: true, applicationId: updated.id }
+    applicationId = updated.id
+  } else {
+    // Create new application
+    const created = await db.application.create({
+      data: {
+        studentId,
+        cycleId: activeCycle.id,
+        subteamId: input.subteamId,
+        status: "DRAFT",
+        lastSavedAt: new Date(),
+        completionPercent: calculateCompletion(input.answers),
+      },
+    })
+    applicationId = created.id
   }
 
-  // No active recruiting cycle exists yet - return error
-  return {
-    success: false,
-    error: "No active recruiting cycle found for this team",
-  }
+  // Save responses
+  await saveResponses(applicationId, input.answers)
+
+  return { success: true, applicationId }
 }
 
 export async function submitApplication(applicationId: string) {
@@ -153,12 +180,74 @@ function calculateCompletion(answers: Record<string, string>): number {
 }
 
 async function saveResponses(applicationId: string, answers: Record<string, string>) {
-  // In a full implementation, this would:
-  // 1. Look up the questions for the application's recruiting cycle
-  // 2. Create/update ApplicationResponse records for each question
-  // For now, we're just calculating completion percentage
-  // This is a placeholder for when recruiting cycles are seeded
-  console.log(`Saving ${Object.keys(answers).length} responses for application ${applicationId}`)
+  // Get the application with its recruiting cycle questions
+  const application = await db.application.findUnique({
+    where: { id: applicationId },
+    include: {
+      cycle: {
+        include: {
+          questions: true,
+        },
+      },
+    },
+  })
+
+  if (!application) {
+    console.error(`Application ${applicationId} not found`)
+    return
+  }
+
+  // Map hardcoded question IDs to actual question IDs from the database
+  const questionMap: Record<string, string> = {}
+  application.cycle.questions.forEach((q) => {
+    const questionText = q.question.toLowerCase()
+    if (questionText.includes("relevant experience")) {
+      questionMap["experience"] = q.id
+    } else if (questionText.includes("why are you interested")) {
+      questionMap["interest"] = q.id
+    } else if (questionText.includes("unique skills")) {
+      questionMap["contribution"] = q.id
+    } else if (questionText.includes("commit to the time")) {
+      questionMap["commitment"] = q.id
+    } else if (questionText.includes("anything else")) {
+      questionMap["additional"] = q.id
+    }
+  })
+
+  // Save each response
+  for (const [hardcodedId, value] of Object.entries(answers)) {
+    // Skip subteam - it's stored on the application itself
+    if (hardcodedId === "subteam") continue
+
+    const questionId = questionMap[hardcodedId]
+    if (!questionId) {
+      console.warn(`No matching question found for: ${hardcodedId}`)
+      continue
+    }
+
+    if (!value || !value.trim()) continue
+
+    await db.applicationResponse.upsert({
+      where: {
+        applicationId_questionId: {
+          applicationId,
+          questionId,
+        },
+      },
+      update: {
+        textResponse: value,
+        selectedOptions: [],
+      },
+      create: {
+        applicationId,
+        questionId,
+        textResponse: value,
+        selectedOptions: [],
+      },
+    })
+  }
+
+  console.log(`Saved ${Object.keys(answers).length} responses for application ${applicationId}`)
 }
 
 // =============================================================================
@@ -197,7 +286,7 @@ export async function addReviewScore(
     return { success: false, error: "Score must be between 1 and 5" }
   }
 
-  const reviewScore = await db.reviewScore.upsert({
+  const applicationScore = await db.applicationScore.upsert({
     where: {
       applicationId_reviewerId: {
         applicationId,
@@ -218,7 +307,7 @@ export async function addReviewScore(
 
   revalidatePath("/admin")
 
-  return { success: true, reviewScore }
+  return { success: true, applicationScore }
 }
 
 export async function addReviewNote(

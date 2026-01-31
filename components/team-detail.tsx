@@ -27,9 +27,10 @@ interface TeamDetailProps {
     role: string
     avatarUrl?: string | null
   }
+  applicationStatus?: string | null
 }
 
-export function TeamDetail({ team, user }: TeamDetailProps) {
+export function TeamDetail({ team, user, applicationStatus }: TeamDetailProps) {
 
   // Format deadline if available
   const deadlineText = team.activeCycle
@@ -254,9 +255,19 @@ export function TeamDetail({ team, user }: TeamDetailProps) {
 
             <div className="space-y-3">
               {team.isRecruiting ? (
-                <Button className="w-full" asChild>
-                  <Link href={`/apply/${team.slug}`}>Start Application</Link>
-                </Button>
+                applicationStatus && ["SUBMITTED", "UNDER_REVIEW", "INTERVIEW", "OFFER", "ACCEPTED", "REJECTED"].includes(applicationStatus) ? (
+                  <Button className="w-full" disabled>
+                    Submitted
+                  </Button>
+                ) : applicationStatus === "DRAFT" ? (
+                  <Button className="w-full" asChild>
+                    <Link href={`/apply/${team.slug}`}>Continue Application</Link>
+                  </Button>
+                ) : (
+                  <Button className="w-full" asChild>
+                    <Link href={`/apply/${team.slug}`}>Start Application</Link>
+                  </Button>
+                )
               ) : (
                 <Button className="w-full" disabled>
                   Not Currently Recruiting

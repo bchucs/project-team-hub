@@ -26,14 +26,14 @@ export default async function ApplicationsPage() {
 
   const applications = await getStudentApplications(profile.id)
 
-  return <ApplicationsDashboard 
-    applications={applications} 
+  return <ApplicationsDashboard
+    applications={applications}
     user={{
       id: user.id,
       name: user.name || "",
       email: user.email || "",
       role: user.role,
-      avatarUrl: user.avatarUrl
-    }} 
+      avatarUrl: user.image
+    }}
   />
 }

@@ -60,17 +60,41 @@ export default async function ApplyPage({ params }: PageProps) {
     notFound()
   }
 
+  // Find existing application for this team's active cycle
+  const existingApplication = await db.application.findFirst({
+    where: {
+      studentId: profile.id,
+      cycle: {
+        teamId: team.id,
+        isActive: true,
+      },
+    },
+    include: {
+      responses: {
+        include: {
+          question: true,
+        },
+      },
+    },
+  })
+
+  // If application is submitted, redirect to applications page
+  if (existingApplication && existingApplication.status !== "DRAFT") {
+    redirect("/applications")
+  }
+
   const teamViewModel = toTeamDetailViewModel(team)
 
-  return <ApplicationForm 
-    team={teamViewModel} 
-    studentId={profile.id} 
+  return <ApplicationForm
+    team={teamViewModel}
+    studentId={profile.id}
+    existingApplication={existingApplication}
     user={{
       id: user.id,
       name: user.name || "",
       email: user.email || "",
       role: user.role,
-      avatarUrl: user.avatarUrl
+      avatarUrl: user.image
     }}
   />
 }

@@ -158,10 +158,18 @@ export const getRecruitingStats = cache(async () => {
 export const getStudentStats = cache(async (studentId: string) => {
   const [applicationsStarted, submitted, interviews] = await Promise.all([
     db.application.count({
-      where: { studentId },
+      where: {
+        studentId,
+        status: "DRAFT"
+      },
     }),
     db.application.count({
-      where: { studentId, status: "SUBMITTED" },
+      where: {
+        studentId,
+        status: {
+          in: ["SUBMITTED", "UNDER_REVIEW", "INTERVIEW", "OFFER", "ACCEPTED", "REJECTED"]
+        }
+      },
     }),
     db.application.count({
       where: { studentId, status: "INTERVIEW" },
@@ -231,7 +239,7 @@ export const getTeamApplications = cache(async (teamId: string) => {
       },
       subteam: true,
       responses: true,
-      reviewScores: {
+      applicationScores: {
         include: {
           reviewer: true,
         },

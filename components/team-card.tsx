@@ -33,10 +33,26 @@ export function TeamCard({ team, application, onBookmark, isBookmarked }: TeamCa
 
     switch (application.status) {
       case "submitted":
+      case "interview":
+      case "offer":
         return (
           <div className="flex items-center justify-between">
             <span className="flex items-center gap-1.5 text-sm text-emerald-600">
               <span className="h-2 w-2 rounded-full bg-emerald-500" />
+              Submitted
+            </span>
+            <Link href={`/applications/${application.id}`}>
+              <Button variant="outline" size="sm">
+                View Application
+              </Button>
+            </Link>
+          </div>
+        )
+      case "rejected":
+        return (
+          <div className="flex items-center justify-between">
+            <span className="flex items-center gap-1.5 text-sm text-muted-foreground">
+              <span className="h-2 w-2 rounded-full bg-muted-foreground" />
               Submitted
             </span>
             <Link href={`/applications/${application.id}`}>
@@ -52,7 +68,7 @@ export function TeamCard({ team, application, onBookmark, isBookmarked }: TeamCa
             <span className="text-sm text-muted-foreground">Application in progress</span>
             <Link href={`/apply/${team.slug}`}>
               <Button size="sm" className="bg-primary hover:bg-primary/90 text-primary-foreground">
-                Continue Application
+                Continue
               </Button>
             </Link>
           </div>
@@ -63,7 +79,7 @@ export function TeamCard({ team, application, onBookmark, isBookmarked }: TeamCa
             <span className="text-sm text-muted-foreground">Draft</span>
             <Link href={`/apply/${team.slug}`}>
               <Button size="sm" className="bg-primary hover:bg-primary/90 text-primary-foreground">
-                Continue Application
+                Continue
               </Button>
             </Link>
           </div>

@@ -101,10 +101,10 @@ model User {
   updatedAt DateTime @updatedAt
 
   // Relations
-  studentProfile  StudentProfile?
-  teamMemberships TeamMembership[]
-  reviewScores    ReviewScore[]
-  reviewNotes     ReviewNote[]
+  studentProfile     StudentProfile?
+  teamMemberships    TeamMembership[]
+  applicationScores  ApplicationScore[]
+  reviewNotes        ReviewNote[]
 
   // Audit relations (things this user created/updated)
   teamsCreated     Team[]                @relation("TeamsCreated")
@@ -319,10 +319,10 @@ model Application {
   updatedAt DateTime @updatedAt
 
   // Relations
-  responses     ApplicationResponse[]
-  reviewScores  ReviewScore[]
-  reviewNotes   ReviewNote[]
-  interviewSlot InterviewSlot?
+  responses         ApplicationResponse[]
+  applicationScores ApplicationScore[]
+  reviewNotes       ReviewNote[]
+  interviewSlot     InterviewSlot?
 
   @@unique([studentId, cycleId]) // One application per student per cycle
 }
@@ -349,7 +349,7 @@ model ApplicationResponse {
 // REVIEW & EVALUATION
 // =============================================================================
 
-model ReviewScore {
+model ApplicationScore {
   id            String      @id @default(uuid())
   applicationId String
   application   Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)

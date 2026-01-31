@@ -335,7 +335,7 @@ export type ApplicationResponse = z.infer<typeof ApplicationResponseSchema>
 // REVIEW & EVALUATION
 // =============================================================================
 
-export const ReviewScoreSchema = z.object({
+export const ApplicationScoreSchema = z.object({
   id: z.string().uuid(),
   applicationId: z.string().uuid(),
   reviewerId: z.string().uuid(),
@@ -346,7 +346,7 @@ export const ReviewScoreSchema = z.object({
   createdAt: z.coerce.date(),
   updatedAt: z.coerce.date(),
 })
-export type ReviewScore = z.infer<typeof ReviewScoreSchema>
+export type ApplicationScore = z.infer<typeof ApplicationScoreSchema>
 
 export const ReviewNoteSchema = z.object({
   id: z.string().uuid(),

@@ -63,6 +63,13 @@ type ProfileWithUser = StudentProfile & { user: User }
 interface ProfileSetupProps {
   existingProfile: ProfileWithUser | null
   userId: string
+  user?: {
+    id: string
+    name: string
+    email: string
+    role: string
+    avatarUrl?: string | null
+  }
 }
 
 export function ProfileSetup({ existingProfile, userId, user }: ProfileSetupProps) {
