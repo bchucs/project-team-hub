@@ -84,11 +84,13 @@ export default async function ApplyPage({ params }: PageProps) {
   }
 
   const teamViewModel = toTeamDetailViewModel(team)
+  const questions = team.recruitingCycles?.find((c) => c.isActive)?.questions ?? []
 
   return <ApplicationForm
     team={teamViewModel}
     studentId={profile.id}
     existingApplication={existingApplication}
+    questions={questions}
     user={{
       id: user.id,
       name: user.name || "",

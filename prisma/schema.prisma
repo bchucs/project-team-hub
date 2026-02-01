@@ -238,6 +238,11 @@ model RecruitingCycle {
   allowLateSubmissions Boolean @default(false)
   requireResume        Boolean @default(true)
 
+  // Coffee chats (scheduled externally)
+  coffeeChatStart   DateTime?
+  coffeeChatEnd     DateTime?
+  coffeeChatNote    String?
+
   // Audit
   createdById String
   createdBy   User   @relation("CyclesCreated", fields: [createdById], references: [id])

@@ -1,6 +1,6 @@
 "use client"
 
-import { Search, SlidersHorizontal, ChevronDown } from "lucide-react"
+import { Search, ChevronDown } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import {
@@ -56,10 +56,6 @@ export function SearchFilters({
             ))}
           </DropdownMenuContent>
         </DropdownMenu>
-        <Button variant="outline" className="gap-2 bg-card">
-          <SlidersHorizontal className="h-4 w-4" />
-          More Filters
-        </Button>
       </div>
     </div>
   )

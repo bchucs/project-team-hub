@@ -3,6 +3,19 @@
 import { db } from "./db"
 import { revalidatePath } from "next/cache"
 import { hashPassword } from "./password"
+import { S3Client, PutObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3"
+import { auth } from "./auth"
+
+const s3 = new S3Client({
+  region: process.env.S3_REGION || "us-east-1",
+  endpoint: process.env.S3_ENDPOINT,
+  credentials: {
+    accessKeyId: process.env.S3_ACCESS_KEY_ID!,
+    secretAccessKey: process.env.S3_SECRET_ACCESS_KEY!,
+  },
+  forcePathStyle: !!process.env.S3_ENDPOINT,
+})
+const S3_BUCKET = process.env.S3_BUCKET!
 
 // =============================================================================
 // APPLICATION ACTIONS
@@ -169,18 +182,96 @@ export async function createOrUpdateProfile(input: CreateProfileInput) {
   return { success: true, profile }
 }
 
+const MAX_RESUME_SIZE = 5 * 1024 * 1024 // 5 MB
+
+export async function uploadResume(
+  file: File
+): Promise<{ success: true; resumeUrl: string } | { success: false; error: string }> {
+  const session = await auth()
+  if (!session?.user?.id) {
+    throw new Error("Not authenticated")
+  }
+  const userId = session.user.id
+
+  if (file.type !== "application/pdf") {
+    return { success: false, error: "Only PDF files are allowed" }
+  }
+  if (file.size > MAX_RESUME_SIZE) {
+    return { success: false, error: "Resume must be under 5 MB" }
+  }
+
+  const existing = await db.studentProfile.findUnique({
+    where: { userId },
+    select: { resumeUrl: true },
+  })
+
+  if (!existing) {
+    return { success: false, error: "Save your profile before uploading a resume" }
+  }
+
+  const resumeKey = `${userId}.pdf`
+
+  if (existing.resumeUrl) {
+    // Best-effort cleanup of previous resume; non-fatal if it fails
+    try { await s3.send(new DeleteObjectCommand({ Bucket: S3_BUCKET, Key: resumeKey })) } catch {}
+  }
+
+  await s3.send(new PutObjectCommand({
+    Bucket: S3_BUCKET,
+    Key: resumeKey,
+    Body: Buffer.from(await file.arrayBuffer()),
+    ContentType: "application/pdf",
+  }))
+
+  const resumeUrl = process.env.S3_ENDPOINT
+    ? `${process.env.S3_ENDPOINT}/${S3_BUCKET}/${resumeKey}`
+    : `https://${S3_BUCKET}.s3.${process.env.S3_REGION || "us-east-1"}.amazonaws.com/${resumeKey}`
+
+  await db.studentProfile.update({
+    where: { userId },
+    data: { resumeUrl },
+  })
+
+  revalidatePath("/profile")
+  return { success: true, resumeUrl }
+}
+
+export async function removeResume() {
+  const session = await auth()
+  if (!session?.user?.id) {
+    throw new Error("Not authenticated")
+  }
+  const userId = session.user.id
+
+  const profile = await db.studentProfile.findUnique({
+    where: { userId },
+    select: { resumeUrl: true },
+  })
+
+  if (profile?.resumeUrl) {
+    await s3.send(new DeleteObjectCommand({ Bucket: S3_BUCKET, Key: `${userId}.pdf` }))
+    await db.studentProfile.update({
+      where: { userId },
+      data: { resumeUrl: null },
+    })
+  }
+
+  revalidatePath("/profile")
+  return { success: true }
+}
+
 // =============================================================================
 // HELPERS
 // =============================================================================
 
 function calculateCompletion(answers: Record<string, string>): number {
-  const requiredFields = ["subteam", "experience", "interest", "contribution", "commitment"]
-  const answered = requiredFields.filter((f) => answers[f]?.trim()).length
-  return Math.round((answered / requiredFields.length) * 100)
+  const entries = Object.entries(answers)
+  if (entries.length === 0) return 0
+  const answered = entries.filter(([, v]) => v?.trim()).length
+  return Math.round((answered / entries.length) * 100)
 }
 
 async function saveResponses(applicationId: string, answers: Record<string, string>) {
-  // Get the application with its recruiting cycle questions
   const application = await db.application.findUnique({
     where: { id: applicationId },
     include: {
@@ -197,34 +288,13 @@ async function saveResponses(applicationId: string, answers: Record<string, stri
     return
   }
 
-  // Map hardcoded question IDs to actual question IDs from the database
-  const questionMap: Record<string, string> = {}
-  application.cycle.questions.forEach((q) => {
-    const questionText = q.question.toLowerCase()
-    if (questionText.includes("relevant experience")) {
-      questionMap["experience"] = q.id
-    } else if (questionText.includes("why are you interested")) {
-      questionMap["interest"] = q.id
-    } else if (questionText.includes("unique skills")) {
-      questionMap["contribution"] = q.id
-    } else if (questionText.includes("commit to the time")) {
-      questionMap["commitment"] = q.id
-    } else if (questionText.includes("anything else")) {
-      questionMap["additional"] = q.id
-    }
-  })
+  const validQuestionIds = new Set(application.cycle.questions.map((q) => q.id))
 
-  // Save each response
-  for (const [hardcodedId, value] of Object.entries(answers)) {
-    // Skip subteam - it's stored on the application itself
-    if (hardcodedId === "subteam") continue
-
-    const questionId = questionMap[hardcodedId]
-    if (!questionId) {
-      console.warn(`No matching question found for: ${hardcodedId}`)
-      continue
-    }
-
+  for (const [questionId, value] of Object.entries(answers)) {
+    // Skip subteam — stored on the application itself, not as a response
+    if (questionId === "subteam") continue
+    // Skip keys that aren't valid question IDs for this cycle
+    if (!validQuestionIds.has(questionId)) continue
     if (!value || !value.trim()) continue
 
     await db.applicationResponse.upsert({
@@ -246,8 +316,6 @@ async function saveResponses(applicationId: string, answers: Record<string, stri
       },
     })
   }
-
-  console.log(`Saved ${Object.keys(answers).length} responses for application ${applicationId}`)
 }
 
 // =============================================================================
@@ -353,6 +421,279 @@ export async function deleteReviewNote(noteId: string, userId: string) {
 
   revalidatePath("/admin")
 
+  return { success: true }
+}
+
+// =============================================================================
+// QUESTION ACTIONS
+// =============================================================================
+
+interface CreateQuestionInput {
+  question: string
+  description?: string
+  type: "LONG_TEXT" | "SELECT"
+  isRequired: boolean
+  options?: string[]
+  subteamId?: string | null
+}
+
+export async function createQuestion(cycleId: string, userId: string, input: CreateQuestionInput) {
+  const maxOrder = await db.applicationQuestion.aggregate({
+    _max: { order: true },
+    where: { cycleId, subteamId: input.subteamId ?? null },
+  })
+
+  const nextOrder = (maxOrder._max.order ?? -1) + 1
+
+  await db.applicationQuestion.create({
+    data: {
+      cycleId,
+      subteamId: input.subteamId ?? null,
+      question: input.question,
+      description: input.description || null,
+      type: input.type,
+      isRequired: input.isRequired,
+      options: input.type === "SELECT" ? (input.options ?? []) : [],
+      order: nextOrder,
+      createdById: userId,
+    },
+  })
+
+  revalidatePath("/admin")
+  return { success: true }
+}
+
+interface UpdateQuestionInput {
+  question?: string
+  description?: string
+  type?: "LONG_TEXT" | "SELECT"
+  isRequired?: boolean
+  options?: string[]
+}
+
+export async function updateQuestion(questionId: string, userId: string, input: UpdateQuestionInput) {
+  const data: Record<string, unknown> = { updatedById: userId }
+
+  if (input.question !== undefined) data.question = input.question
+  if (input.description !== undefined) data.description = input.description || null
+  if (input.isRequired !== undefined) data.isRequired = input.isRequired
+  if (input.type !== undefined) {
+    data.type = input.type
+    data.options = input.type === "SELECT" ? (input.options ?? []) : []
+  } else if (input.options !== undefined) {
+    data.options = input.options
+  }
+
+  await db.applicationQuestion.update({
+    where: { id: questionId },
+    data: data as any,
+  })
+
+  revalidatePath("/admin")
+  return { success: true }
+}
+
+export async function deleteQuestion(questionId: string) {
+  const question = await db.applicationQuestion.findUnique({
+    where: { id: questionId },
+  })
+
+  if (!question) {
+    return { success: false, error: "Question not found" }
+  }
+
+  await db.applicationQuestion.delete({
+    where: { id: questionId },
+  })
+
+  // Close the gap: decrement order for all questions after the deleted one
+  await db.applicationQuestion.updateMany({
+    where: {
+      cycleId: question.cycleId,
+      subteamId: question.subteamId,
+      order: { gt: question.order },
+    },
+    data: {
+      order: { decrement: 1 },
+    },
+  })
+
+  revalidatePath("/admin")
+  return { success: true }
+}
+
+export async function moveQuestion(questionId: string, newOrder: number) {
+  const question = await db.applicationQuestion.findUnique({
+    where: { id: questionId },
+  })
+
+  if (!question) return { success: false, error: "Question not found" }
+
+  const oldOrder = question.order
+  if (oldOrder === newOrder) return { success: true }
+
+  if (oldOrder < newOrder) {
+    // Moving down: shift questions in (oldOrder, newOrder] up by one
+    await db.applicationQuestion.updateMany({
+      where: {
+        cycleId: question.cycleId,
+        subteamId: question.subteamId,
+        order: { gt: oldOrder, lte: newOrder },
+      },
+      data: { order: { decrement: 1 } },
+    })
+  } else {
+    // Moving up: shift questions in [newOrder, oldOrder) down by one
+    await db.applicationQuestion.updateMany({
+      where: {
+        cycleId: question.cycleId,
+        subteamId: question.subteamId,
+        order: { gte: newOrder, lt: oldOrder },
+      },
+      data: { order: { increment: 1 } },
+    })
+  }
+
+  await db.applicationQuestion.update({
+    where: { id: questionId },
+    data: { order: newOrder },
+  })
+
+  revalidatePath("/admin")
+  return { success: true }
+}
+
+// =============================================================================
+// RECRUITING SETUP ACTIONS
+// =============================================================================
+
+interface UpdateCycleTimelineInput {
+  name: string
+  applicationOpenDate: string
+  applicationDeadline: string
+  reviewDeadline: string
+  decisionDate: string
+  allowLateSubmissions: boolean
+  requireResume: boolean
+}
+
+export async function updateCycleTimeline(cycleId: string, input: UpdateCycleTimelineInput) {
+  const cycle = await db.recruitingCycle.findUnique({ where: { id: cycleId } })
+  if (!cycle) return { success: false, error: "Recruiting cycle not found" }
+
+  await db.recruitingCycle.update({
+    where: { id: cycleId },
+    data: {
+      name: input.name,
+      applicationOpenDate: new Date(input.applicationOpenDate),
+      applicationDeadline: new Date(input.applicationDeadline),
+      reviewDeadline: input.reviewDeadline ? new Date(input.reviewDeadline) : null,
+      decisionDate: input.decisionDate ? new Date(input.decisionDate) : null,
+      allowLateSubmissions: input.allowLateSubmissions,
+      requireResume: input.requireResume,
+    },
+  })
+
+  revalidatePath("/admin")
+  return { success: true }
+}
+
+interface UpdateCoffeeChatInput {
+  coffeeChatStart: string
+  coffeeChatEnd: string
+  coffeeChatNote: string
+}
+
+export async function updateCoffeeChat(cycleId: string, input: UpdateCoffeeChatInput) {
+  const cycle = await db.recruitingCycle.findUnique({ where: { id: cycleId } })
+  if (!cycle) return { success: false, error: "Recruiting cycle not found" }
+
+  await db.recruitingCycle.update({
+    where: { id: cycleId },
+    data: {
+      coffeeChatStart: input.coffeeChatStart ? new Date(input.coffeeChatStart) : null,
+      coffeeChatEnd: input.coffeeChatEnd ? new Date(input.coffeeChatEnd) : null,
+      coffeeChatNote: input.coffeeChatNote || null,
+    },
+  })
+
+  revalidatePath("/admin")
+  return { success: true }
+}
+
+export async function updateSubteamRecruiting(subteamId: string, isRecruiting: boolean) {
+  const subteam = await db.subteam.findUnique({ where: { id: subteamId } })
+  if (!subteam) return { success: false, error: "Subteam not found" }
+
+  await db.subteam.update({
+    where: { id: subteamId },
+    data: { isRecruiting },
+  })
+
+  revalidatePath("/admin")
+  return { success: true }
+}
+
+
+interface CreateInterviewSlotInput {
+  startTime: string
+  endTime: string
+  location?: string
+  virtualLink?: string
+}
+
+export async function createInterviewSlot(cycleId: string, input: CreateInterviewSlotInput) {
+  const cycle = await db.recruitingCycle.findUnique({ where: { id: cycleId } })
+  if (!cycle) return { success: false, error: "Recruiting cycle not found" }
+
+  await db.interviewSlot.create({
+    data: {
+      cycleId,
+      startTime: new Date(input.startTime),
+      endTime: new Date(input.endTime),
+      applicationId: null,
+      interviewerIds: [],
+      location: input.location || null,
+      virtualLink: input.virtualLink || null,
+    },
+  })
+
+  revalidatePath("/admin")
+  return { success: true }
+}
+
+interface UpdateInterviewSlotInput {
+  startTime: string
+  endTime: string
+  location?: string
+  virtualLink?: string
+}
+
+export async function updateInterviewSlot(slotId: string, input: UpdateInterviewSlotInput) {
+  const slot = await db.interviewSlot.findUnique({ where: { id: slotId } })
+  if (!slot) return { success: false, error: "Interview slot not found" }
+
+  await db.interviewSlot.update({
+    where: { id: slotId },
+    data: {
+      startTime: new Date(input.startTime),
+      endTime: new Date(input.endTime),
+      location: input.location || null,
+      virtualLink: input.virtualLink || null,
+    },
+  })
+
+  revalidatePath("/admin")
+  return { success: true }
+}
+
+export async function deleteInterviewSlot(slotId: string) {
+  const slot = await db.interviewSlot.findUnique({ where: { id: slotId } })
+  if (!slot) return { success: false, error: "Interview slot not found" }
+
+  await db.interviewSlot.delete({ where: { id: slotId } })
+
+  revalidatePath("/admin")
   return { success: true }
 }
 

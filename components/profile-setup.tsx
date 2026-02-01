@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
-import { Upload, Plus, X, Loader2, Check } from "lucide-react"
+import { Upload, Plus, X, Loader2, Check, FileText } from "lucide-react"
 import { Header } from "@/components/header"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -17,7 +17,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { createOrUpdateProfile } from "@/lib/actions"
+import { createOrUpdateProfile, uploadResume, removeResume } from "@/lib/actions"
 import type { StudentProfile, User } from "@prisma/client"
 
 // Skill options for the dropdown
@@ -93,8 +93,8 @@ export function ProfileSetup({ existingProfile, userId, user }: ProfileSetupProp
   const [githubUrl, setGithubUrl] = useState(existingProfile?.githubUrl ?? "")
   const [portfolioUrl, setPortfolioUrl] = useState(existingProfile?.portfolioUrl ?? "")
 
-  // Resume state (file upload not implemented yet)
-  const [resume, setResume] = useState<File | null>(null)
+  const [resumeUrl, setResumeUrl] = useState<string | null>(existingProfile?.resumeUrl ?? null)
+  const [isUploadingResume, setIsUploadingResume] = useState(false)
 
   const addSkill = (skill: string) => {
     if (skill && !skills.includes(skill)) {
@@ -106,10 +106,43 @@ export function ProfileSetup({ existingProfile, userId, user }: ProfileSetupProp
     setSkills(skills.filter((s) => s !== skillToRemove))
   }
 
-  const handleResumeUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleResumeUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
-    if (file) {
-      setResume(file)
+    if (!file) return
+    if (file.type !== "application/pdf") {
+      setError("Only PDF files are allowed")
+      return
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setError("Resume must be under 5 MB")
+      return
+    }
+
+    setIsUploadingResume(true)
+    setError(null)
+    try {
+      const result = await uploadResume(file)
+      if (result.success) {
+        setResumeUrl(result.resumeUrl)
+      } else {
+        setError(result.error)
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to upload resume")
+    } finally {
+      setIsUploadingResume(false)
+    }
+  }
+
+  const handleRemoveResume = async () => {
+    setIsUploadingResume(true)
+    try {
+      await removeResume()
+      setResumeUrl(null)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to remove resume")
+    } finally {
+      setIsUploadingResume(false)
     }
   }
 
@@ -327,15 +360,29 @@ export function ProfileSetup({ existingProfile, userId, user }: ProfileSetupProp
             </CardHeader>
             <CardContent>
               <div className="border-2 border-dashed border-border rounded-lg p-8 text-center">
-                {resume ? (
-                  <div className="space-y-2">
-                    <p className="text-sm font-medium text-foreground">{resume.name}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {(resume.size / 1024 / 1024).toFixed(2)} MB
+                {isUploadingResume ? (
+                  <div className="flex flex-col items-center gap-2">
+                    <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                    <p className="text-sm text-muted-foreground">
+                      {resumeUrl ? "Removing..." : "Uploading..."}
                     </p>
-                    <Button variant="outline" size="sm" onClick={() => setResume(null)}>
-                      Remove
-                    </Button>
+                  </div>
+                ) : resumeUrl ? (
+                  <div className="space-y-3">
+                    <div className="flex justify-center">
+                      <FileText className="h-8 w-8 text-primary" />
+                    </div>
+                    <p className="text-sm font-medium text-foreground">Resume uploaded</p>
+                    <div className="flex justify-center gap-2">
+                      <Button variant="outline" size="sm" asChild>
+                        <a href={resumeUrl} target="_blank" rel="noopener noreferrer">
+                          View
+                        </a>
+                      </Button>
+                      <Button variant="outline" size="sm" onClick={handleRemoveResume}>
+                        Remove
+                      </Button>
+                    </div>
                   </div>
                 ) : (
                   <div className="space-y-4">
@@ -359,9 +406,6 @@ export function ProfileSetup({ existingProfile, userId, user }: ProfileSetupProp
                         />
                       </label>
                     </div>
-                    <p className="text-xs text-muted-foreground">
-                      Resume upload coming soon
-                    </p>
                   </div>
                 )}
               </div>

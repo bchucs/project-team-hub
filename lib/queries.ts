@@ -214,6 +214,7 @@ export const getTeamMembership = cache(async (userId: string) => {
             where: { isActive: true },
             include: {
               questions: { orderBy: { order: "asc" } },
+              interviewSlots: { orderBy: { startTime: "asc" } },
             },
           },
         },

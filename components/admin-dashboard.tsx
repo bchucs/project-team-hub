@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useTransition } from "react"
+import { useState, useRef, useTransition } from "react"
 import Link from "next/link"
 import {
   Users,
@@ -16,17 +16,24 @@ import {
   Clock,
   Plus,
   Loader2,
-  Send
+  Send,
+  Trash2,
+  GripVertical,
+  Pencil,
+  LogOut
 } from "lucide-react"
-import { updateApplicationStatus, addReviewScore, addReviewNote } from "@/lib/actions"
+import { signOut } from "next-auth/react"
+import { updateApplicationStatus, addReviewScore, addReviewNote, createQuestion, updateQuestion, deleteQuestion, moveQuestion, updateCycleTimeline, updateCoffeeChat, updateSubteamRecruiting, createInterviewSlot, updateInterviewSlot, deleteInterviewSlot } from "@/lib/actions"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
   DropdownMenu,
+  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
@@ -56,7 +63,8 @@ type ApplicationWithDetails = Application & {
 type TeamWithDetails = Team & {
   subteams: Subteam[]
   recruitingCycles: (RecruitingCycle & {
-    questions: { id: string; question: string; order: number }[]
+    questions: { id: string; question: string; description: string | null; type: string; isRequired: boolean; options: string[]; order: number; subteamId: string | null }[]
+    interviewSlots: { id: string; startTime: Date; endTime: Date; applicationId: string | null; location: string | null; virtualLink: string | null }[]
   })[]
 }
 
@@ -111,8 +119,9 @@ function AdminHeader({ team }: { team: Team }) {
         </div>
         <div className="flex items-center gap-2">
           <ThemeToggle />
-          <Button variant="outline" size="sm" asChild>
-            <Link href="/">Exit Admin</Link>
+          <Button variant="outline" size="sm" onClick={() => signOut({ callbackUrl: "/login" })}>
+            <LogOut className="mr-2 h-4 w-4" />
+            Sign Out
           </Button>
         </div>
       </div>
@@ -607,10 +616,925 @@ function ApplicantTable({
   )
 }
 
+type QuestionItem = { id: string; question: string; description: string | null; type: string; isRequired: boolean; options: string[]; order: number; subteamId: string | null }
+
+function QuestionEditor({
+  questions,
+  subteams,
+  cycle,
+  reviewerId,
+}: {
+  questions: QuestionItem[]
+  subteams: Subteam[]
+  cycle: RecruitingCycle | null
+  reviewerId: string
+}) {
+  const [isPending, startTransition] = useTransition()
+  const [showAddForm, setShowAddForm] = useState(false)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [selectedScope, setSelectedScope] = useState<string>("general")
+
+  // Form state
+  const [formQuestion, setFormQuestion] = useState("")
+  const [formDescription, setFormDescription] = useState("")
+  const [formType, setFormType] = useState<"LONG_TEXT" | "SELECT">("LONG_TEXT")
+  const [formRequired, setFormRequired] = useState(true)
+  const [formOptions, setFormOptions] = useState<string[]>([""])
+
+  const scopedQuestions = questions.filter((q) =>
+    selectedScope === "general" ? q.subteamId === null : q.subteamId === selectedScope
+  )
+
+  const resetForm = () => {
+    setFormQuestion("")
+    setFormDescription("")
+    setFormType("LONG_TEXT")
+    setFormRequired(true)
+    setFormOptions([""])
+  }
+
+  const openAddForm = () => {
+    resetForm()
+    setEditingId(null)
+    setShowAddForm(true)
+  }
+
+  const openEditForm = (q: QuestionItem) => {
+    setFormQuestion(q.question)
+    setFormDescription(q.description ?? "")
+    setFormType(q.type as "LONG_TEXT" | "SELECT")
+    setFormRequired(q.isRequired)
+    setFormOptions(q.options.length > 0 ? q.options : [""])
+    setEditingId(q.id)
+    setShowAddForm(false)
+  }
+
+  const closeForm = () => {
+    setShowAddForm(false)
+    setEditingId(null)
+    resetForm()
+  }
+
+  const cleanOptions = formOptions.filter((o) => o.trim() !== "")
+
+  const handleSave = () => {
+    if (!formQuestion.trim() || !cycle) return
+    startTransition(async () => {
+      if (editingId) {
+        await updateQuestion(editingId, reviewerId, {
+          question: formQuestion.trim(),
+          description: formDescription.trim(),
+          type: formType,
+          isRequired: formRequired,
+          options: cleanOptions,
+        })
+      } else {
+        await createQuestion(cycle.id, reviewerId, {
+          question: formQuestion.trim(),
+          description: formDescription.trim(),
+          type: formType,
+          isRequired: formRequired,
+          options: cleanOptions,
+          subteamId: selectedScope === "general" ? null : selectedScope,
+        })
+      }
+      closeForm()
+    })
+  }
+
+  const handleDelete = (id: string) => {
+    startTransition(async () => {
+      await deleteQuestion(id)
+    })
+  }
+
+  const [draggedIndex, setDraggedIndex] = useState<number | null>(null)
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null)
+
+  const handleDragStart = (e: React.DragEvent, index: number) => {
+    setDraggedIndex(index)
+    e.dataTransfer.effectAllowed = "move"
+  }
+
+  const handleDragOver = (e: React.DragEvent, index: number) => {
+    e.preventDefault()
+    e.dataTransfer.dropEffect = "move"
+    if (index !== draggedIndex) {
+      setDragOverIndex(index)
+    }
+  }
+
+  const handleDrop = (e: React.DragEvent, dropIndex: number) => {
+    e.preventDefault()
+    if (draggedIndex === null || draggedIndex === dropIndex) return
+    const question = scopedQuestions[draggedIndex]
+    const targetOrder = scopedQuestions[dropIndex].order
+    startTransition(async () => {
+      await moveQuestion(question.id, targetOrder)
+    })
+    setDraggedIndex(null)
+    setDragOverIndex(null)
+  }
+
+  const handleDragEnd = () => {
+    setDraggedIndex(null)
+    setDragOverIndex(null)
+  }
+
+  const addOption = () => setFormOptions((prev) => [...prev, ""])
+  const removeOption = (idx: number) => setFormOptions((prev) => prev.filter((_, i) => i !== idx))
+  const updateOption = (idx: number, value: string) =>
+    setFormOptions((prev) => prev.map((v, i) => (i === idx ? value : v)))
+
+  if (!cycle) {
+    return (
+      <div className="py-12 text-center">
+        <p className="text-muted-foreground">No active recruiting cycle</p>
+      </div>
+    )
+  }
+
+  const questionFormJsx = (
+    <Card className="border-primary/40">
+      <CardContent className="pt-4 space-y-4">
+        <div className="space-y-2">
+          <label className="text-sm font-medium text-foreground">Question</label>
+          <Input
+            value={formQuestion}
+            onChange={(e) => setFormQuestion(e.target.value)}
+            placeholder="Enter question text..."
+          />
+        </div>
+        <div className="space-y-2">
+          <label className="text-sm font-medium text-foreground">Description</label>
+          <Input
+            value={formDescription}
+            onChange={(e) => setFormDescription(e.target.value)}
+            placeholder="Optional helper text..."
+          />
+        </div>
+        <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-foreground">Type</label>
+            <Select value={formType} onValueChange={(v) => setFormType(v as "LONG_TEXT" | "SELECT")}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="LONG_TEXT">Free Response</SelectItem>
+                <SelectItem value="SELECT">Multiple Choice</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2 flex flex-col justify-end">
+            <label className="text-sm font-medium text-foreground">Required</label>
+            <button
+              type="button"
+              onClick={() => setFormRequired(!formRequired)}
+              className={`relative h-6 w-11 rounded-full transition-colors ${formRequired ? "bg-primary" : "bg-muted"}`}
+            >
+              <span
+                className={`absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${formRequired ? "translate-x-5" : "translate-x-0"}`}
+              />
+            </button>
+          </div>
+        </div>
+        {formType === "SELECT" && (
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-foreground">Options</label>
+            <div className="space-y-2">
+              {formOptions.map((opt, idx) => (
+                <div key={idx} className="flex items-center gap-2">
+                  <Input
+                    value={opt}
+                    onChange={(e) => updateOption(idx, e.target.value)}
+                    placeholder={`Option ${idx + 1}`}
+                    className="flex-1"
+                  />
+                  {formOptions.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => removeOption(idx)}
+                      className="p-1.5 text-muted-foreground hover:text-destructive transition-colors"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+            <Button type="button" variant="ghost" size="sm" onClick={addOption} className="gap-1">
+              <Plus className="h-3.5 w-3.5" />
+              Add Option
+            </Button>
+          </div>
+        )}
+        <div className="flex items-center gap-2 pt-2">
+          <Button size="sm" onClick={handleSave} disabled={isPending || !formQuestion.trim()}>
+            {isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : null}
+            {editingId ? "Save Changes" : "Add Question"}
+          </Button>
+          <Button size="sm" variant="ghost" onClick={closeForm} disabled={isPending}>
+            Cancel
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  )
+
+  return (
+    <div className="space-y-3">
+      {subteams.length > 0 && (
+        <div className="flex items-center gap-2">
+          <label className="text-sm font-medium text-foreground">Editing:</label>
+          <Select value={selectedScope} onValueChange={(value) => { setSelectedScope(value); closeForm() }}>
+            <SelectTrigger className="w-48">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="general">General</SelectItem>
+              {subteams.map((s) => (
+                <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+      <div className="flex items-center justify-between">
+        <p className="text-sm text-muted-foreground">
+          {scopedQuestions.length} question{scopedQuestions.length !== 1 ? "s" : ""} in {selectedScope === "general" ? "General" : subteams.find((s) => s.id === selectedScope)?.name ?? ""}
+        </p>
+        {!showAddForm && !editingId && (
+          <Button size="sm" onClick={openAddForm} className="gap-1.5">
+            <Plus className="h-3.5 w-3.5" />
+            Add Question
+          </Button>
+        )}
+      </div>
+
+      {showAddForm && questionFormJsx}
+
+      {scopedQuestions.length === 0 && !showAddForm && (
+        <Card>
+          <CardContent className="py-12 text-center">
+            <p className="text-muted-foreground mb-3">No questions yet. Add the first question to your {selectedScope === "general" ? "General" : subteams.find((s) => s.id === selectedScope)?.name ?? ""} application.</p>
+            <Button size="sm" onClick={openAddForm} className="gap-1.5">
+              <Plus className="h-3.5 w-3.5" />
+              Add Question
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      <div className="space-y-2">
+        {scopedQuestions.map((q, idx) => {
+          if (editingId === q.id) {
+            return (
+              <div key={q.id}>
+                {questionFormJsx}
+              </div>
+            )
+          }
+          return (
+            <Card
+              key={q.id}
+              draggable
+              onDragStart={(e) => handleDragStart(e, idx)}
+              onDragOver={(e) => handleDragOver(e, idx)}
+              onDrop={(e) => handleDrop(e, idx)}
+              onDragEnd={handleDragEnd}
+              className={`transition-all ${draggedIndex === idx ? "opacity-40" : ""} ${dragOverIndex === idx && draggedIndex !== idx ? "ring-2 ring-primary" : ""}`}
+            >
+              <CardContent className="pt-4 pb-4">
+                <div className="flex items-start gap-4">
+                  <div className="flex items-center gap-1.5 pt-0.5 cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground transition-colors">
+                    <GripVertical className="h-5 w-5" />
+                    <span className="text-xs font-medium">{idx + 1}</span>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-sm text-foreground">{q.question}</p>
+                    {q.description && (
+                      <p className="text-xs text-muted-foreground mt-0.5">{q.description}</p>
+                    )}
+                    <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                      <Badge variant="secondary" className="text-xs">
+                        {q.type === "LONG_TEXT" ? "Free Response" : "Multiple Choice"}
+                      </Badge>
+                      <Badge variant={q.isRequired ? "default" : "outline"} className="text-xs">
+                        {q.isRequired ? "Required" : "Optional"}
+                      </Badge>
+                    </div>
+                    {q.type === "SELECT" && q.options.length > 0 && (
+                      <div className="mt-2 flex flex-wrap gap-1">
+                        {q.options.map((opt) => (
+                          <span key={opt} className="text-xs bg-muted text-muted-foreground px-2 py-0.5 rounded">
+                            {opt}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => openEditForm(q)}
+                      disabled={isPending}
+                      className="p-1.5 text-muted-foreground hover:text-foreground disabled:opacity-25 transition-colors"
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </button>
+                    <button
+                      onClick={() => handleDelete(q.id)}
+                      disabled={isPending}
+                      className="p-1.5 text-muted-foreground hover:text-destructive disabled:opacity-25 transition-colors"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+function RecruitingEditor({
+  team,
+  cycle,
+}: {
+  team: TeamWithDetails
+  cycle: RecruitingCycle | null
+}) {
+  const [isPending, startTransition] = useTransition()
+
+  // Timeline edit state
+  const [editingTimeline, setEditingTimeline] = useState(false)
+  const [timelineName, setTimelineName] = useState("")
+  const [timelineOpenDate, setTimelineOpenDate] = useState("")
+  const [timelineDeadline, setTimelineDeadline] = useState("")
+  const [timelineReviewDeadline, setTimelineReviewDeadline] = useState("")
+  const [timelineDecisionDate, setTimelineDecisionDate] = useState("")
+  const [timelineAllowLate, setTimelineAllowLate] = useState(false)
+  const [timelineRequireResume, setTimelineRequireResume] = useState(true)
+
+  // Coffee chat edit state
+  const [editingCoffeeChat, setEditingCoffeeChat] = useState(false)
+  const [coffeeChatStart, setCoffeeChatStart] = useState("")
+  const [coffeeChatEnd, setCoffeeChatEnd] = useState("")
+  const [coffeeChatNote, setCoffeeChatNote] = useState("")
+
+  // Subteam recruiting local state
+  const [recruitingIds, setRecruitingIds] = useState<Set<string>>(() =>
+    new Set(team.subteams.filter((s) => s.isRecruiting).map((s) => s.id))
+  )
+  const [subteamsOpen, setSubteamsOpen] = useState(false)
+  const suppressSubteamsClose = useRef(false)
+
+  // Interview slot form state
+  const [showAddSlotForm, setShowAddSlotForm] = useState(false)
+  const [editingSlotId, setEditingSlotId] = useState<string | null>(null)
+  const [slotStartTime, setSlotStartTime] = useState("")
+  const [slotEndTime, setSlotEndTime] = useState("")
+  const [slotLocation, setSlotLocation] = useState("")
+  const [slotVirtualLink, setSlotVirtualLink] = useState("")
+
+  if (!cycle) {
+    return (
+      <div className="py-12 text-center">
+        <p className="text-muted-foreground">No active recruiting cycle</p>
+      </div>
+    )
+  }
+
+  const interviewSlots = team.recruitingCycles[0]?.interviewSlots ?? []
+  const unassignedSlots = interviewSlots.filter((s) => s.applicationId === null)
+
+  const formatDate = (date: Date) =>
+    new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric" }).format(date)
+
+  const formatDateTime = (date: Date) =>
+    new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(date)
+
+  const formatDateForInput = (date: Date) => {
+    const y = date.getFullYear()
+    const m = String(date.getMonth() + 1).padStart(2, "0")
+    const d = String(date.getDate()).padStart(2, "0")
+    return `${y}-${m}-${d}`
+  }
+
+  const formatDateTimeForInput = (date: Date) => {
+    const y = date.getFullYear()
+    const mo = String(date.getMonth() + 1).padStart(2, "0")
+    const d = String(date.getDate()).padStart(2, "0")
+    const h = String(date.getHours()).padStart(2, "0")
+    const mi = String(date.getMinutes()).padStart(2, "0")
+    return `${y}-${mo}-${d}T${h}:${mi}`
+  }
+
+  // Timeline handlers
+  const openTimelineEdit = () => {
+    setTimelineName(cycle.name)
+    setTimelineOpenDate(formatDateForInput(cycle.applicationOpenDate))
+    setTimelineDeadline(formatDateForInput(cycle.applicationDeadline))
+    setTimelineReviewDeadline(cycle.reviewDeadline ? formatDateForInput(cycle.reviewDeadline) : "")
+    setTimelineDecisionDate(cycle.decisionDate ? formatDateForInput(cycle.decisionDate) : "")
+    setTimelineAllowLate(cycle.allowLateSubmissions)
+    setTimelineRequireResume(cycle.requireResume)
+    setEditingTimeline(true)
+  }
+
+  const handleSaveTimeline = () => {
+    startTransition(async () => {
+      await updateCycleTimeline(cycle.id, {
+        name: timelineName,
+        applicationOpenDate: timelineOpenDate,
+        applicationDeadline: timelineDeadline,
+        reviewDeadline: timelineReviewDeadline,
+        decisionDate: timelineDecisionDate,
+        allowLateSubmissions: timelineAllowLate,
+        requireResume: timelineRequireResume,
+      })
+      setEditingTimeline(false)
+    })
+  }
+
+  // Coffee chat handlers
+  const openCoffeeChatEdit = () => {
+    setCoffeeChatStart(cycle.coffeeChatStart ? formatDateForInput(cycle.coffeeChatStart) : "")
+    setCoffeeChatEnd(cycle.coffeeChatEnd ? formatDateForInput(cycle.coffeeChatEnd) : "")
+    setCoffeeChatNote(cycle.coffeeChatNote ?? "")
+    setEditingCoffeeChat(true)
+  }
+
+  const handleSaveCoffeeChat = () => {
+    startTransition(async () => {
+      await updateCoffeeChat(cycle.id, {
+        coffeeChatStart,
+        coffeeChatEnd,
+        coffeeChatNote,
+      })
+      setEditingCoffeeChat(false)
+    })
+  }
+
+  // Subteam handler
+  const handleToggleRecruiting = (subteamId: string) => {
+    const isRecruiting = recruitingIds.has(subteamId)
+    setRecruitingIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(subteamId)) next.delete(subteamId)
+      else next.add(subteamId)
+      return next
+    })
+    startTransition(async () => {
+      await updateSubteamRecruiting(subteamId, !isRecruiting)
+    })
+  }
+
+  // Interview slot handlers
+  const resetSlotForm = () => {
+    setSlotStartTime("")
+    setSlotEndTime("")
+    setSlotLocation("")
+    setSlotVirtualLink("")
+  }
+
+  const openAddSlot = () => {
+    resetSlotForm()
+    setEditingSlotId(null)
+    setShowAddSlotForm(true)
+  }
+
+  const openEditSlot = (slot: (typeof interviewSlots)[0]) => {
+    setSlotStartTime(formatDateTimeForInput(slot.startTime))
+    setSlotEndTime(formatDateTimeForInput(slot.endTime))
+    setSlotLocation(slot.location ?? "")
+    setSlotVirtualLink(slot.virtualLink ?? "")
+    setEditingSlotId(slot.id)
+    setShowAddSlotForm(false)
+  }
+
+  const closeSlotForm = () => {
+    setShowAddSlotForm(false)
+    setEditingSlotId(null)
+    resetSlotForm()
+  }
+
+  const handleSaveSlot = () => {
+    if (!slotStartTime || !slotEndTime) return
+    startTransition(async () => {
+      const isoStart = new Date(slotStartTime).toISOString()
+      const isoEnd = new Date(slotEndTime).toISOString()
+      if (editingSlotId) {
+        await updateInterviewSlot(editingSlotId, {
+          startTime: isoStart,
+          endTime: isoEnd,
+          location: slotLocation,
+          virtualLink: slotVirtualLink,
+        })
+      } else {
+        await createInterviewSlot(cycle.id, {
+          startTime: isoStart,
+          endTime: isoEnd,
+          location: slotLocation,
+          virtualLink: slotVirtualLink,
+        })
+      }
+      closeSlotForm()
+    })
+  }
+
+  const handleDeleteSlot = (slotId: string) => {
+    startTransition(async () => {
+      await deleteInterviewSlot(slotId)
+    })
+  }
+
+  const slotFormJsx = (
+    <Card className="border-primary/40">
+      <CardContent className="pt-4 space-y-4">
+        <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-foreground">Start Time</label>
+            <input
+              type="datetime-local"
+              value={slotStartTime}
+              onChange={(e) => setSlotStartTime(e.target.value)}
+              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-foreground">End Time</label>
+            <input
+              type="datetime-local"
+              value={slotEndTime}
+              onChange={(e) => setSlotEndTime(e.target.value)}
+              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+            />
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-foreground">Location</label>
+            <Input
+              value={slotLocation}
+              onChange={(e) => setSlotLocation(e.target.value)}
+              placeholder="Room 101..."
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-foreground">Virtual Link</label>
+            <Input
+              value={slotVirtualLink}
+              onChange={(e) => setSlotVirtualLink(e.target.value)}
+              placeholder="https://zoom.us/..."
+            />
+          </div>
+        </div>
+        <div className="flex items-center gap-2 pt-2">
+          <Button size="sm" onClick={handleSaveSlot} disabled={isPending || !slotStartTime || !slotEndTime}>
+            {isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : null}
+            {editingSlotId ? "Save Changes" : "Add Slot"}
+          </Button>
+          <Button size="sm" variant="ghost" onClick={closeSlotForm} disabled={isPending}>
+            Cancel
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  )
+
+  return (
+    <div className="space-y-8">
+      {/* Section 1: Timeline */}
+      <div>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="font-semibold text-foreground">Timeline</h3>
+          {!editingTimeline && (
+            <button
+              onClick={openTimelineEdit}
+              className="p-1.5 text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <Pencil className="h-4 w-4" />
+            </button>
+          )}
+        </div>
+        {editingTimeline ? (
+          <Card>
+            <CardContent className="pt-4 space-y-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-foreground">Cycle Name</label>
+                <Input value={timelineName} onChange={(e) => setTimelineName(e.target.value)} />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-foreground">Applications Open</label>
+                  <input
+                    type="date"
+                    value={timelineOpenDate}
+                    onChange={(e) => setTimelineOpenDate(e.target.value)}
+                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-foreground">Application Deadline</label>
+                  <input
+                    type="date"
+                    value={timelineDeadline}
+                    onChange={(e) => setTimelineDeadline(e.target.value)}
+                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-foreground">Review Deadline</label>
+                  <input
+                    type="date"
+                    value={timelineReviewDeadline}
+                    onChange={(e) => setTimelineReviewDeadline(e.target.value)}
+                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-foreground">Decision Date</label>
+                  <input
+                    type="date"
+                    value={timelineDecisionDate}
+                    onChange={(e) => setTimelineDecisionDate(e.target.value)}
+                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  />
+                </div>
+              </div>
+              <div className="flex items-center gap-8">
+                <div className="flex items-center gap-3">
+                  <label className="text-sm font-medium text-foreground">Allow Late Submissions</label>
+                  <button
+                    type="button"
+                    onClick={() => setTimelineAllowLate(!timelineAllowLate)}
+                    className={`relative h-6 w-11 rounded-full transition-colors ${timelineAllowLate ? "bg-primary" : "bg-muted"}`}
+                  >
+                    <span
+                      className={`absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${timelineAllowLate ? "translate-x-5" : "translate-x-0"}`}
+                    />
+                  </button>
+                </div>
+                <div className="flex items-center gap-3">
+                  <label className="text-sm font-medium text-foreground">Require Resume</label>
+                  <button
+                    type="button"
+                    onClick={() => setTimelineRequireResume(!timelineRequireResume)}
+                    className={`relative h-6 w-11 rounded-full transition-colors ${timelineRequireResume ? "bg-primary" : "bg-muted"}`}
+                  >
+                    <span
+                      className={`absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${timelineRequireResume ? "translate-x-5" : "translate-x-0"}`}
+                    />
+                  </button>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 pt-2">
+                <Button size="sm" onClick={handleSaveTimeline} disabled={isPending}>
+                  {isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : null}
+                  Save
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => setEditingTimeline(false)} disabled={isPending}>
+                  Cancel
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        ) : (
+          <Card>
+            <CardContent className="pt-4">
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-foreground">{cycle.name}</p>
+                <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
+                  <div>
+                    <span className="text-xs text-muted-foreground">Applications Open: </span>
+                    <span className="text-sm text-foreground">{formatDate(cycle.applicationOpenDate)}</span>
+                  </div>
+                  <div>
+                    <span className="text-xs text-muted-foreground">Deadline: </span>
+                    <span className="text-sm text-foreground">{formatDate(cycle.applicationDeadline)}</span>
+                  </div>
+                  <div>
+                    <span className="text-xs text-muted-foreground">Review Deadline: </span>
+                    <span className="text-sm text-foreground">{cycle.reviewDeadline ? formatDate(cycle.reviewDeadline) : "—"}</span>
+                  </div>
+                  <div>
+                    <span className="text-xs text-muted-foreground">Decision Date: </span>
+                    <span className="text-sm text-foreground">{cycle.decisionDate ? formatDate(cycle.decisionDate) : "—"}</span>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 mt-2">
+                  <span className={`text-xs px-2 py-0.5 rounded ${cycle.allowLateSubmissions ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"}`}>
+                    {cycle.allowLateSubmissions ? "Late submissions allowed" : "No late submissions"}
+                  </span>
+                  <span className={`text-xs px-2 py-0.5 rounded ${cycle.requireResume ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"}`}>
+                    {cycle.requireResume ? "Resume required" : "Resume optional"}
+                  </span>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+      </div>
+
+      {/* Section 2: Subteams */}
+      <div>
+        <h3 className="font-semibold text-foreground mb-3">Subteams</h3>
+        <Card>
+          <CardContent className="pt-4">
+            <DropdownMenu open={subteamsOpen} onOpenChange={(open) => {
+              if (!open && suppressSubteamsClose.current) {
+                suppressSubteamsClose.current = false
+                return
+              }
+              setSubteamsOpen(open)
+            }}>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" className="w-full justify-between" disabled={isPending}>
+                  <span className="text-sm truncate">
+                    {recruitingIds.size === 0
+                      ? "No subteams recruiting"
+                      : team.subteams.filter((s) => recruitingIds.has(s.id)).map((s) => s.name).join(", ")}
+                  </span>
+                  <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent className="w-[--radix-dropdown-menu-trigger-width]">
+                {team.subteams.map((subteam) => (
+                  <DropdownMenuCheckboxItem
+                    key={subteam.id}
+                    checked={recruitingIds.has(subteam.id)}
+                    onCheckedChange={() => {
+                      suppressSubteamsClose.current = true
+                      handleToggleRecruiting(subteam.id)
+                    }}
+                    disabled={isPending}
+                  >
+                    {subteam.name}
+                  </DropdownMenuCheckboxItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Section 3: Coffee Chats */}
+      <div>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="font-semibold text-foreground">Coffee Chats</h3>
+          {!editingCoffeeChat && (
+            <button
+              onClick={openCoffeeChatEdit}
+              className="p-1.5 text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <Pencil className="h-4 w-4" />
+            </button>
+          )}
+        </div>
+        {editingCoffeeChat ? (
+          <Card>
+            <CardContent className="pt-4 space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-foreground">Start Date</label>
+                  <input
+                    type="date"
+                    value={coffeeChatStart}
+                    onChange={(e) => setCoffeeChatStart(e.target.value)}
+                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-foreground">End Date</label>
+                  <input
+                    type="date"
+                    value={coffeeChatEnd}
+                    onChange={(e) => setCoffeeChatEnd(e.target.value)}
+                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-foreground">Note</label>
+                <Textarea
+                  value={coffeeChatNote}
+                  onChange={(e) => setCoffeeChatNote(e.target.value)}
+                  placeholder="Add a note about coffee chat scheduling..."
+                />
+              </div>
+              <div className="flex items-center gap-2 pt-2">
+                <Button size="sm" onClick={handleSaveCoffeeChat} disabled={isPending}>
+                  {isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : null}
+                  Save
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => setEditingCoffeeChat(false)} disabled={isPending}>
+                  Cancel
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        ) : (
+          <Card>
+            <CardContent className="pt-4 space-y-3">
+              <div>
+                <span className="text-xs text-muted-foreground">Date Range: </span>
+                <span className="text-sm text-foreground">
+                  {cycle.coffeeChatStart && cycle.coffeeChatEnd
+                    ? `${formatDate(cycle.coffeeChatStart)} – ${formatDate(cycle.coffeeChatEnd)}`
+                    : "Not set"}
+                </span>
+              </div>
+              <div>
+                <span className="text-xs text-muted-foreground">Note: </span>
+                <span className="text-sm text-foreground">{cycle.coffeeChatNote || "None"}</span>
+              </div>
+              <p className="text-xs text-muted-foreground italic">Scheduling is managed outside this application.</p>
+            </CardContent>
+          </Card>
+        )}
+      </div>
+
+      {/* Section 4: Interview Slots */}
+      <div>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="font-semibold text-foreground">Interview Slots</h3>
+          {!showAddSlotForm && !editingSlotId && (
+            <Button size="sm" onClick={openAddSlot} className="gap-1.5">
+              <Plus className="h-3.5 w-3.5" />
+              Add Slot
+            </Button>
+          )}
+        </div>
+
+        {showAddSlotForm && slotFormJsx}
+
+        {unassignedSlots.length === 0 && !showAddSlotForm && (
+          <Card>
+            <CardContent className="py-12 text-center">
+              <p className="text-muted-foreground mb-3">No interview slots yet. Add the first slot.</p>
+              <Button size="sm" onClick={openAddSlot} className="gap-1.5">
+                <Plus className="h-3.5 w-3.5" />
+                Add Slot
+              </Button>
+            </CardContent>
+          </Card>
+        )}
+
+        <div className="space-y-2">
+          {unassignedSlots.map((slot) => {
+            if (editingSlotId === slot.id) {
+              return <div key={slot.id}>{slotFormJsx}</div>
+            }
+            return (
+              <Card key={slot.id}>
+                <CardContent className="pt-4 pb-4">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <p className="text-sm text-foreground">
+                        {formatDateTime(slot.startTime)} – {formatDateTime(slot.endTime)}
+                      </p>
+                      {(slot.location || slot.virtualLink) && (
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          {slot.location || slot.virtualLink}
+                        </p>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => openEditSlot(slot)}
+                        disabled={isPending}
+                        className="p-1.5 text-muted-foreground hover:text-foreground disabled:opacity-25 transition-colors"
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </button>
+                      <button
+                        onClick={() => handleDeleteSlot(slot.id)}
+                        disabled={isPending}
+                        className="p-1.5 text-muted-foreground hover:text-destructive disabled:opacity-25 transition-colors"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )
+          })}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export function AdminDashboard({ team, applications, stats, cycle, reviewerId }: AdminDashboardProps) {
   const [selectedApplication, setSelectedApplication] = useState<ApplicationWithDetails | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedSubteam, setSelectedSubteam] = useState("all")
+  const [activeTab, setActiveTab] = useState("table")
 
   const filteredApplications = applications.filter((app) => {
     const profile = app.student
@@ -700,46 +1624,50 @@ export function AdminDashboard({ team, applications, stats, cycle, reviewerId }:
           </Card>
         </div>
 
-        <Tabs defaultValue="table" className="w-full">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
             <TabsList className="bg-muted">
               <TabsTrigger value="table">Table View</TabsTrigger>
               <TabsTrigger value="pipeline">Pipeline View</TabsTrigger>
+              <TabsTrigger value="questions">Application</TabsTrigger>
+              <TabsTrigger value="recruiting">Recruiting</TabsTrigger>
             </TabsList>
-            <div className="flex items-center gap-3">
-              <div className="relative flex-1 sm:w-64">
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  placeholder="Search applicants..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-9"
-                />
-              </div>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="outline" className="gap-2 bg-transparent">
-                    <Filter className="h-4 w-4" />
-                    {selectedSubteam === "all" ? "All Subteams" : selectedSubteam}
-                    <ChevronDown className="h-4 w-4" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem onClick={() => setSelectedSubteam("all")}>
-                    All Subteams
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  {team.subteams.map((subteam) => (
-                    <DropdownMenuItem
-                      key={subteam.id}
-                      onClick={() => setSelectedSubteam(subteam.name)}
-                    >
-                      {subteam.name}
+            {activeTab !== "questions" && activeTab !== "recruiting" && (
+              <div className="flex items-center gap-3">
+                <div className="relative flex-1 sm:w-64">
+                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    placeholder="Search applicants..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="pl-9"
+                  />
+                </div>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" className="gap-2 bg-transparent">
+                      <Filter className="h-4 w-4" />
+                      {selectedSubteam === "all" ? "All Subteams" : selectedSubteam}
+                      <ChevronDown className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={() => setSelectedSubteam("all")}>
+                      All Subteams
                     </DropdownMenuItem>
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </div>
+                    <DropdownMenuSeparator />
+                    {team.subteams.map((subteam) => (
+                      <DropdownMenuItem
+                        key={subteam.id}
+                        onClick={() => setSelectedSubteam(subteam.name)}
+                      >
+                        {subteam.name}
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+            )}
           </div>
 
           <TabsContent value="table">
@@ -760,6 +1688,19 @@ export function AdminDashboard({ team, applications, stats, cycle, reviewerId }:
                 />
               ))}
             </div>
+          </TabsContent>
+
+          <TabsContent value="questions">
+            <QuestionEditor
+              questions={team.recruitingCycles[0]?.questions ?? []}
+              subteams={team.subteams}
+              cycle={cycle}
+              reviewerId={reviewerId}
+            />
+          </TabsContent>
+
+          <TabsContent value="recruiting">
+            <RecruitingEditor team={team} cycle={cycle} />
           </TabsContent>
         </Tabs>
       </main>

@@ -36,6 +36,15 @@ interface ApplicationFormProps {
       }
     }>
   } | null
+  questions: Array<{
+    id: string
+    question: string
+    description: string | null
+    type: string
+    isRequired: boolean
+    options: string[]
+    subteamId: string | null
+  }>
   user?: {
     id: string
     name: string
@@ -45,110 +54,24 @@ interface ApplicationFormProps {
   }
 }
 
-interface Question {
-  id: string
-  type: "textarea" | "select" | "radio"
-  question: string
-  description?: string
-  required: boolean
-  maxLength?: number
-  options?: string[]
-}
-
-const applicationQuestions: Question[] = [
-  {
-    id: "subteam",
-    type: "select",
-    question: "Which subteam are you applying to?",
-    description: "Select your first choice. You may indicate interest in other subteams below.",
-    required: true,
-  },
-  {
-    id: "experience",
-    type: "textarea",
-    question: "Tell us about your relevant experience",
-    description: "Include coursework, personal projects, internships, or other team experiences.",
-    required: true,
-    maxLength: 1500,
-  },
-  {
-    id: "interest",
-    type: "textarea",
-    question: "Why are you interested in joining this team?",
-    description: "What excites you about our projects and mission?",
-    required: true,
-    maxLength: 1000,
-  },
-  {
-    id: "contribution",
-    type: "textarea",
-    question: "What unique skills or perspectives would you bring?",
-    description: "Think about both technical and non-technical contributions.",
-    required: true,
-    maxLength: 1000,
-  },
-  {
-    id: "commitment",
-    type: "radio",
-    question: "Can you commit to the time requirements?",
-    description: "This team typically requires 10-15 hours per week.",
-    required: true,
-    options: [
-      "Yes, I can fully commit",
-      "I can commit with some flexibility",
-      "I need to discuss my schedule",
-    ],
-  },
-  {
-    id: "additional",
-    type: "textarea",
-    question: "Is there anything else you'd like us to know?",
-    description: "Optional - share any additional context about your application.",
-    required: false,
-    maxLength: 500,
-  },
-]
-
-const steps = [
-  { id: "subteam", label: "Subteam Selection" },
-  { id: "experience", label: "Experience" },
-  { id: "interest", label: "Interest" },
-  { id: "contribution", label: "Contribution" },
-  { id: "commitment", label: "Commitment" },
-  { id: "review", label: "Review & Submit" },
-]
-
-export function ApplicationForm({ team, studentId, existingApplication, user }: ApplicationFormProps) {
+export function ApplicationForm({ team, studentId, existingApplication, questions, user }: ApplicationFormProps) {
   const router = useRouter()
   const [currentStep, setCurrentStep] = useState(0)
+
+  const recruitingSubteams = team.subteams.filter((s) => s.isRecruiting)
+  const hasSubteamStep = recruitingSubteams.length > 0
 
   // Initialize answers from existing application if available
   const initialAnswers: Record<string, string> = {}
   if (existingApplication) {
-    // Add subteam if exists
     if (existingApplication.subteamId) {
       initialAnswers.subteam = existingApplication.subteamId
     }
-
-    // Map responses to hardcoded question IDs
     existingApplication.responses.forEach((response) => {
-      const questionText = response.question.question.toLowerCase()
-      let hardcodedId: string | null = null
-
-      if (questionText.includes("relevant experience")) {
-        hardcodedId = "experience"
-      } else if (questionText.includes("why are you interested")) {
-        hardcodedId = "interest"
-      } else if (questionText.includes("unique skills")) {
-        hardcodedId = "contribution"
-      } else if (questionText.includes("commit to the time")) {
-        hardcodedId = "commitment"
-      } else if (questionText.includes("anything else")) {
-        hardcodedId = "additional"
-      }
-
-      if (hardcodedId && response.textResponse) {
-        initialAnswers[hardcodedId] = response.textResponse
+      if (response.textResponse) {
+        initialAnswers[response.question.id] = response.textResponse
+      } else if (response.selectedOptions?.length > 0) {
+        initialAnswers[response.question.id] = response.selectedOptions[0]
       }
     })
   }
@@ -161,10 +84,30 @@ export function ApplicationForm({ team, studentId, existingApplication, user }: 
   const [error, setError] = useState<string | null>(null)
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
-  const progress = ((currentStep + 1) / steps.length) * 100
+  // Visible questions: general first, then selected subteam's (seamless for students)
+  const generalQuestions = questions.filter((q) => q.subteamId === null)
+  const subteamQuestions = answers.subteam
+    ? questions.filter((q) => q.subteamId === answers.subteam)
+    : []
+  const visibleQuestions = [...generalQuestions, ...subteamQuestions]
 
-  const currentQuestion = applicationQuestions[currentStep]
+  // Build steps dynamically: [subteam?] + one per visible question + review
+  const steps = [
+    ...(hasSubteamStep ? [{ id: "subteam", label: "Subteam Selection" }] : []),
+    ...visibleQuestions.map((q) => ({
+      id: q.id,
+      label: q.question.length > 30 ? q.question.slice(0, 28) + "…" : q.question,
+    })),
+    { id: "review", label: "Review & Submit" },
+  ]
+
+  const progress = ((currentStep + 1) / steps.length) * 100
   const isReviewStep = currentStep === steps.length - 1
+  const currentStepDef = steps[currentStep]
+  const currentQuestion =
+    currentStepDef && currentStepDef.id !== "subteam" && currentStepDef.id !== "review"
+      ? visibleQuestions.find((q) => q.id === currentStepDef.id) ?? null
+      : null
 
   // Debounced save function
   const debouncedSave = useCallback(
@@ -217,9 +160,9 @@ export function ApplicationForm({ team, studentId, existingApplication, user }: 
 
   const canProceed = () => {
     if (isReviewStep) return true
-    const question = applicationQuestions[currentStep]
-    if (!question.required) return true
-    return !!answers[question.id]?.trim()
+    if (currentStepDef?.id === "subteam") return !!answers["subteam"]?.trim()
+    if (currentQuestion?.isRequired) return !!answers[currentQuestion.id]?.trim()
+    return true
   }
 
   const handleNext = () => {
@@ -312,7 +255,7 @@ export function ApplicationForm({ team, studentId, existingApplication, user }: 
                 }`}
               >
                 <span className="flex items-center gap-2">
-                  {index < currentStep && (
+                  {index !== currentStep && answers[step.id]?.trim() && (
                     <Check className="h-4 w-4 text-emerald-500" />
                   )}
                   {step.label}
@@ -331,11 +274,19 @@ export function ApplicationForm({ team, studentId, existingApplication, user }: 
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6">
-                  {applicationQuestions.map((question) => (
-                    <div key={question.id} className="space-y-1">
-                      <p className="text-sm font-medium text-foreground">{question.question}</p>
+                  {hasSubteamStep && (
+                    <div className="space-y-1">
+                      <p className="text-sm font-medium text-foreground">Which subteam are you applying to?</p>
                       <p className="text-sm text-muted-foreground whitespace-pre-wrap">
-                        {answers[question.id] || "(No answer provided)"}
+                        {recruitingSubteams.find((s) => s.id === answers["subteam"])?.name || "(No answer provided)"}
+                      </p>
+                    </div>
+                  )}
+                  {visibleQuestions.map((q) => (
+                    <div key={q.id} className="space-y-1">
+                      <p className="text-sm font-medium text-foreground">{q.question}</p>
+                      <p className="text-sm text-muted-foreground whitespace-pre-wrap">
+                        {answers[q.id] || "(No answer provided)"}
                       </p>
                     </div>
                   ))}
@@ -363,48 +314,47 @@ export function ApplicationForm({ team, studentId, existingApplication, user }: 
             ) : (
               <Card>
                 <CardHeader>
-                  <CardTitle>{currentQuestion.question}</CardTitle>
-                  {currentQuestion.description && (
-                    <CardDescription>{currentQuestion.description}</CardDescription>
-                  )}
+                  <CardTitle>
+                    {currentStepDef?.id === "subteam"
+                      ? "Which subteam are you applying to?"
+                      : currentQuestion?.question}
+                  </CardTitle>
+                  <CardDescription>
+                    {currentStepDef?.id === "subteam"
+                      ? "Select your first choice."
+                      : currentQuestion?.description ?? undefined}
+                    {currentQuestion && !currentQuestion.isRequired && (
+                      <span className="italic"> — Optional</span>
+                    )}
+                  </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  {currentQuestion.type === "textarea" && (
-                    <div className="space-y-2">
-                      <Textarea
-                        value={answers[currentQuestion.id] || ""}
-                        onChange={(e) => updateAnswer(currentQuestion.id, e.target.value)}
-                        placeholder="Type your answer here..."
-                        className="min-h-[200px]"
-                        maxLength={currentQuestion.maxLength}
-                      />
-                      {currentQuestion.maxLength && (
-                        <p className="text-xs text-muted-foreground text-right">
-                          {(answers[currentQuestion.id] || "").length} / {currentQuestion.maxLength}
-                        </p>
-                      )}
-                    </div>
-                  )}
-                  {currentQuestion.type === "select" && (
+                  {currentStepDef?.id === "subteam" && (
                     <Select
-                      value={answers[currentQuestion.id] || ""}
-                      onValueChange={(value) => updateAnswer(currentQuestion.id, value)}
+                      value={answers["subteam"] || ""}
+                      onValueChange={(value) => updateAnswer("subteam", value)}
                     >
                       <SelectTrigger>
                         <SelectValue placeholder="Select a subteam..." />
                       </SelectTrigger>
                       <SelectContent>
-                        {team.subteams
-                          .filter((s) => s.isRecruiting)
-                          .map((subteam) => (
-                            <SelectItem key={subteam.id} value={subteam.id}>
-                              {subteam.name}
-                            </SelectItem>
-                          ))}
+                        {recruitingSubteams.map((subteam) => (
+                          <SelectItem key={subteam.id} value={subteam.id}>
+                            {subteam.name}
+                          </SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                   )}
-                  {currentQuestion.type === "radio" && currentQuestion.options && (
+                  {currentQuestion?.type === "LONG_TEXT" && (
+                    <Textarea
+                      value={answers[currentQuestion.id] || ""}
+                      onChange={(e) => updateAnswer(currentQuestion.id, e.target.value)}
+                      placeholder="Type your answer here..."
+                      className="min-h-[200px]"
+                    />
+                  )}
+                  {currentQuestion?.type === "SELECT" && currentQuestion.options.length > 0 && (
                     <RadioGroup
                       value={answers[currentQuestion.id] || ""}
                       onValueChange={(value) => updateAnswer(currentQuestion.id, value)}
@@ -412,13 +362,21 @@ export function ApplicationForm({ team, studentId, existingApplication, user }: 
                     >
                       {currentQuestion.options.map((option) => (
                         <div key={option} className="flex items-center space-x-3">
-                          <RadioGroupItem value={option} id={option} />
-                          <Label htmlFor={option} className="font-normal cursor-pointer">
+                          <RadioGroupItem value={option} id={`${currentQuestion.id}-${option}`} />
+                          <Label htmlFor={`${currentQuestion.id}-${option}`} className="font-normal cursor-pointer">
                             {option}
                           </Label>
                         </div>
                       ))}
                     </RadioGroup>
+                  )}
+                  {currentQuestion?.type === "SELECT" && currentQuestion.options.length === 0 && (
+                    <Textarea
+                      value={answers[currentQuestion.id] || ""}
+                      onChange={(e) => updateAnswer(currentQuestion.id, e.target.value)}
+                      placeholder="Type your answer here..."
+                      className="min-h-[200px]"
+                    />
                   )}
                 </CardContent>
               </Card>
