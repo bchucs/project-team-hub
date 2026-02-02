@@ -9,21 +9,19 @@ import {
   TrendingUp,
   Search,
   Filter,
-  MoreVertical,
   Star,
   Mail,
   ChevronDown,
   Clock,
   Plus,
   Loader2,
-  Send,
   Trash2,
   GripVertical,
   Pencil,
   LogOut
 } from "lucide-react"
 import { signOut } from "next-auth/react"
-import { updateApplicationStatus, addReviewScore, addReviewNote, createQuestion, updateQuestion, deleteQuestion, moveQuestion, updateCycleTimeline, updateCoffeeChat, updateSubteamRecruiting, createInterviewSlot, updateInterviewSlot, deleteInterviewSlot } from "@/lib/actions"
+import { updateApplicationStatus, addReviewScore, createQuestion, updateQuestion, deleteQuestion, moveQuestion, updateCycleTimeline, updateCoffeeChat, updateSubteamRecruiting } from "@/lib/actions"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -47,7 +45,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { ThemeToggle } from "@/components/theme-toggle"
-import type { Team, Subteam, RecruitingCycle, Application, User, StudentProfile, ApplicationScore, ReviewNote, ApplicationResponse } from "@prisma/client"
+import type { Team, Subteam, RecruitingCycle, Application, User, StudentProfile, ApplicationScore, ReviewNote, ApplicationResponse, ApplicationQuestion } from "@prisma/client"
 
 // Types for the data from database
 type ApplicationWithDetails = Application & {
@@ -57,14 +55,13 @@ type ApplicationWithDetails = Application & {
   subteam: Subteam | null
   applicationScores: (ApplicationScore & { reviewer: User })[]
   reviewNotes: (ReviewNote & { author: User })[]
-  responses: ApplicationResponse[]
+  responses: (ApplicationResponse & { question: ApplicationQuestion })[]
 }
 
 type TeamWithDetails = Team & {
   subteams: Subteam[]
   recruitingCycles: (RecruitingCycle & {
     questions: { id: string; question: string; description: string | null; type: string; isRequired: boolean; options: string[]; order: number; subteamId: string | null }[]
-    interviewSlots: { id: string; startTime: Date; endTime: Date; applicationId: string | null; location: string | null; virtualLink: string | null }[]
   })[]
 }
 
@@ -209,9 +206,6 @@ function ApplicantDetailPanel({
 }) {
   const [isPending, startTransition] = useTransition()
   const [myRating, setMyRating] = useState<number>(0)
-  const [noteContent, setNoteContent] = useState("")
-  const [showNoteForm, setShowNoteForm] = useState(false)
-  const [showResponses, setShowResponses] = useState(false)
 
   if (!application) return null
 
@@ -238,15 +232,6 @@ function ApplicantDetailPanel({
     setMyRating(rating)
     startTransition(async () => {
       await addReviewScore(application.id, reviewerId, rating)
-    })
-  }
-
-  const handleAddNote = () => {
-    if (!noteContent.trim()) return
-    startTransition(async () => {
-      await addReviewNote(application.id, reviewerId, noteContent)
-      setNoteContent("")
-      setShowNoteForm(false)
     })
   }
 
@@ -279,12 +264,30 @@ function ApplicantDetailPanel({
 
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <p className="text-xs text-muted-foreground uppercase tracking-wider">Major</p>
-            <p className="font-medium text-foreground">{profile?.major}</p>
+            <p className="text-xs text-muted-foreground uppercase tracking-wider">College</p>
+            <p className="font-medium text-foreground">{profile?.college?.replace(/_/g, ' ')}</p>
           </div>
           <div>
             <p className="text-xs text-muted-foreground uppercase tracking-wider">Year</p>
             <p className="font-medium text-foreground">{profile?.year}</p>
+          </div>
+          <div>
+            <p className="text-xs text-muted-foreground uppercase tracking-wider">Major</p>
+            <p className="font-medium text-foreground">{profile?.major}</p>
+          </div>
+          {profile?.minor && (
+            <div>
+              <p className="text-xs text-muted-foreground uppercase tracking-wider">Minor</p>
+              <p className="font-medium text-foreground">{profile.minor}</p>
+            </div>
+          )}
+          <div>
+            <p className="text-xs text-muted-foreground uppercase tracking-wider">Graduation</p>
+            <p className="font-medium text-foreground">{profile?.expectedGraduation}</p>
+          </div>
+          <div>
+            <p className="text-xs text-muted-foreground uppercase tracking-wider">NetID</p>
+            <p className="font-medium text-foreground">{profile?.netId}</p>
           </div>
           <div>
             <p className="text-xs text-muted-foreground uppercase tracking-wider">Subteam</p>
@@ -299,6 +302,13 @@ function ApplicantDetailPanel({
             </p>
           </div>
         </div>
+
+        {profile?.bio && (
+          <div>
+            <p className="text-xs text-muted-foreground uppercase tracking-wider mb-2">Bio</p>
+            <p className="text-sm text-foreground leading-relaxed">{profile.bio}</p>
+          </div>
+        )}
 
         {/* Your Rating */}
         <div>
@@ -344,6 +354,59 @@ function ApplicantDetailPanel({
           </div>
         )}
 
+        {profile?.resumeUrl && (
+          <div>
+            <p className="text-xs text-muted-foreground uppercase tracking-wider mb-2">Resume</p>
+            <a
+              href={profile.resumeUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-primary bg-primary/10 hover:bg-primary/20 rounded-lg transition-colors"
+            >
+              <FileText className="h-4 w-4" />
+              View Resume
+            </a>
+          </div>
+        )}
+
+        {(profile?.linkedinUrl || profile?.githubUrl || profile?.portfolioUrl) && (
+          <div>
+            <p className="text-xs text-muted-foreground uppercase tracking-wider mb-2">Links</p>
+            <div className="flex flex-wrap gap-2">
+              {profile?.linkedinUrl && (
+                <a
+                  href={profile.linkedinUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-medium text-foreground bg-muted hover:bg-muted/80 rounded-md transition-colors"
+                >
+                  LinkedIn
+                </a>
+              )}
+              {profile?.githubUrl && (
+                <a
+                  href={profile.githubUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-medium text-foreground bg-muted hover:bg-muted/80 rounded-md transition-colors"
+                >
+                  GitHub
+                </a>
+              )}
+              {profile?.portfolioUrl && (
+                <a
+                  href={profile.portfolioUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-medium text-foreground bg-muted hover:bg-muted/80 rounded-md transition-colors"
+                >
+                  Portfolio
+                </a>
+              )}
+            </div>
+          </div>
+        )}
+
         {profile?.skills && profile.skills.length > 0 && (
           <div>
             <p className="text-xs text-muted-foreground uppercase tracking-wider mb-2">Skills</p>
@@ -357,53 +420,19 @@ function ApplicantDetailPanel({
           </div>
         )}
 
+        {/* View Full Application */}
+        <div className="border-t border-border pt-4">
+          <Link href={`/admin/applications/${application.id}`}>
+            <Button variant="default" className="w-full gap-2">
+              <FileText className="h-4 w-4" />
+              View Full Application
+            </Button>
+          </Link>
+        </div>
+
         {/* Notes Section */}
         <div>
-          <div className="flex items-center justify-between mb-2">
-            <p className="text-xs text-muted-foreground uppercase tracking-wider">Notes</p>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setShowNoteForm(!showNoteForm)}
-              className="h-6 px-2 text-xs"
-            >
-              <Plus className="h-3 w-3 mr-1" />
-              Add Note
-            </Button>
-          </div>
-
-          {showNoteForm && (
-            <div className="mb-3 space-y-2">
-              <textarea
-                value={noteContent}
-                onChange={(e) => setNoteContent(e.target.value)}
-                placeholder="Add a note about this applicant..."
-                className="w-full p-2 text-sm border border-border rounded-lg bg-background resize-none focus:outline-none focus:ring-2 focus:ring-primary"
-                rows={3}
-              />
-              <div className="flex gap-2">
-                <Button
-                  size="sm"
-                  onClick={handleAddNote}
-                  disabled={isPending || !noteContent.trim()}
-                  className="gap-1"
-                >
-                  {isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
-                  Save
-                </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => {
-                    setShowNoteForm(false)
-                    setNoteContent("")
-                  }}
-                >
-                  Cancel
-                </Button>
-              </div>
-            </div>
-          )}
+          <p className="text-xs text-muted-foreground uppercase tracking-wider mb-2">Notes</p>
 
           {application.reviewNotes.length > 0 ? (
             <div className="space-y-2">
@@ -416,44 +445,8 @@ function ApplicantDetailPanel({
                 </div>
               ))}
             </div>
-          ) : !showNoteForm && (
+          ) : (
             <p className="text-sm text-muted-foreground">No notes yet</p>
-          )}
-        </div>
-
-        {/* Application Responses */}
-        <div className="border-t border-border pt-4">
-          <button
-            onClick={() => setShowResponses(!showResponses)}
-            className="flex items-center justify-between w-full text-left"
-          >
-            <p className="text-xs text-muted-foreground uppercase tracking-wider">Application Responses</p>
-            <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${showResponses ? 'rotate-180' : ''}`} />
-          </button>
-
-          {showResponses && (
-            <div className="mt-3 space-y-4">
-              {application.responses.length > 0 ? (
-                application.responses.map((response, idx) => (
-                  <div key={response.id} className="space-y-1">
-                    <p className="text-xs font-medium text-muted-foreground">Question {idx + 1}</p>
-                    <div className="text-sm text-foreground bg-muted p-3 rounded-lg">
-                      {response.textResponse || response.selectedOptions?.join(', ') ||
-                        (response.fileUrl ? (
-                          <a href={response.fileUrl} className="text-primary underline" target="_blank" rel="noopener noreferrer">
-                            View uploaded file
-                          </a>
-                        ) : (
-                          <span className="text-muted-foreground italic">No response</span>
-                        ))
-                      }
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <p className="text-sm text-muted-foreground">No responses submitted yet</p>
-              )}
-            </div>
           )}
         </div>
 
@@ -488,133 +481,6 @@ function ApplicantDetailPanel({
   )
 }
 
-function ApplicantTable({
-  applications,
-  onSelectApplicant
-}: {
-  applications: ApplicationWithDetails[]
-  onSelectApplicant: (application: ApplicationWithDetails) => void
-}) {
-  return (
-    <div className="border border-border rounded-lg overflow-hidden">
-      <table className="w-full">
-        <thead className="bg-muted">
-          <tr>
-            <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-              Applicant
-            </th>
-            <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-              Subteam
-            </th>
-            <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-              Stage
-            </th>
-            <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-              Rating
-            </th>
-            <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-              Applied
-            </th>
-            <th className="px-4 py-3 text-right text-xs font-medium text-muted-foreground uppercase tracking-wider">
-              Actions
-            </th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-border bg-card">
-          {applications.map((app) => {
-            const profile = app.student
-            const stageConfig = pipelineStages.find((s) => s.id === app.status)
-            const avgRating = app.applicationScores.length > 0
-              ? Math.round(app.applicationScores.reduce((sum, s) => sum + s.overallScore, 0) / app.applicationScores.length)
-              : null
-
-            return (
-              <tr key={app.id} className="hover:bg-muted/50 transition-colors">
-                <td className="px-4 py-3">
-                  <button
-                    onClick={() => onSelectApplicant(app)}
-                    className="flex items-center gap-3 text-left"
-                  >
-                    <Avatar className="h-8 w-8">
-                      <AvatarFallback className="text-xs bg-primary/10 text-primary">
-                        {profile?.firstName?.charAt(0)}{profile?.lastName?.charAt(0)}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div>
-                      <p className="font-medium text-foreground text-sm">
-                        {profile?.firstName} {profile?.lastName}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {profile?.major} • {profile?.year}
-                      </p>
-                    </div>
-                  </button>
-                </td>
-                <td className="px-4 py-3">
-                  <span className="text-sm text-foreground">{app.subteam?.name || "—"}</span>
-                </td>
-                <td className="px-4 py-3">
-                  <Badge
-                    variant="outline"
-                    className={`${stageConfig?.color} text-white border-0`}
-                  >
-                    {stageConfig?.label}
-                  </Badge>
-                </td>
-                <td className="px-4 py-3">
-                  {avgRating ? (
-                    <div className="flex items-center gap-0.5">
-                      {Array.from({ length: 5 }).map((_, i) => (
-                        <Star
-                          key={i}
-                          className={`h-3.5 w-3.5 ${i < avgRating ? "text-amber-400 fill-amber-400" : "text-muted-foreground/30"}`}
-                        />
-                      ))}
-                    </div>
-                  ) : (
-                    <span className="text-sm text-muted-foreground">—</span>
-                  )}
-                </td>
-                <td className="px-4 py-3">
-                  <span className="text-sm text-muted-foreground">
-                    {app.submittedAt
-                      ? new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" }).format(app.submittedAt)
-                      : "—"}
-                  </span>
-                </td>
-                <td className="px-4 py-3 text-right">
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon">
-                        <MoreVertical className="h-4 w-4" />
-                        <span className="sr-only">Actions</span>
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem onClick={() => onSelectApplicant(app)}>
-                        View Details
-                      </DropdownMenuItem>
-                      <DropdownMenuItem>View Application</DropdownMenuItem>
-                      <DropdownMenuItem>Send Email</DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem>Schedule Interview</DropdownMenuItem>
-                      <DropdownMenuItem>Send Offer</DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </td>
-              </tr>
-            )
-          })}
-        </tbody>
-      </table>
-      {applications.length === 0 && (
-        <div className="p-8 text-center text-muted-foreground">
-          No applications yet
-        </div>
-      )}
-    </div>
-  )
-}
 
 type QuestionItem = { id: string; question: string; description: string | null; type: string; isRequired: boolean; options: string[]; order: number; subteamId: string | null }
 
@@ -992,14 +858,6 @@ function RecruitingEditor({
   const [subteamsOpen, setSubteamsOpen] = useState(false)
   const suppressSubteamsClose = useRef(false)
 
-  // Interview slot form state
-  const [showAddSlotForm, setShowAddSlotForm] = useState(false)
-  const [editingSlotId, setEditingSlotId] = useState<string | null>(null)
-  const [slotStartTime, setSlotStartTime] = useState("")
-  const [slotEndTime, setSlotEndTime] = useState("")
-  const [slotLocation, setSlotLocation] = useState("")
-  const [slotVirtualLink, setSlotVirtualLink] = useState("")
-
   if (!cycle) {
     return (
       <div className="py-12 text-center">
@@ -1008,29 +866,14 @@ function RecruitingEditor({
     )
   }
 
-  const interviewSlots = team.recruitingCycles[0]?.interviewSlots ?? []
-  const unassignedSlots = interviewSlots.filter((s) => s.applicationId === null)
-
   const formatDate = (date: Date) =>
     new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric" }).format(date)
-
-  const formatDateTime = (date: Date) =>
-    new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(date)
 
   const formatDateForInput = (date: Date) => {
     const y = date.getFullYear()
     const m = String(date.getMonth() + 1).padStart(2, "0")
     const d = String(date.getDate()).padStart(2, "0")
     return `${y}-${m}-${d}`
-  }
-
-  const formatDateTimeForInput = (date: Date) => {
-    const y = date.getFullYear()
-    const mo = String(date.getMonth() + 1).padStart(2, "0")
-    const d = String(date.getDate()).padStart(2, "0")
-    const h = String(date.getHours()).padStart(2, "0")
-    const mi = String(date.getMinutes()).padStart(2, "0")
-    return `${y}-${mo}-${d}T${h}:${mi}`
   }
 
   // Timeline handlers
@@ -1092,119 +935,6 @@ function RecruitingEditor({
       await updateSubteamRecruiting(subteamId, !isRecruiting)
     })
   }
-
-  // Interview slot handlers
-  const resetSlotForm = () => {
-    setSlotStartTime("")
-    setSlotEndTime("")
-    setSlotLocation("")
-    setSlotVirtualLink("")
-  }
-
-  const openAddSlot = () => {
-    resetSlotForm()
-    setEditingSlotId(null)
-    setShowAddSlotForm(true)
-  }
-
-  const openEditSlot = (slot: (typeof interviewSlots)[0]) => {
-    setSlotStartTime(formatDateTimeForInput(slot.startTime))
-    setSlotEndTime(formatDateTimeForInput(slot.endTime))
-    setSlotLocation(slot.location ?? "")
-    setSlotVirtualLink(slot.virtualLink ?? "")
-    setEditingSlotId(slot.id)
-    setShowAddSlotForm(false)
-  }
-
-  const closeSlotForm = () => {
-    setShowAddSlotForm(false)
-    setEditingSlotId(null)
-    resetSlotForm()
-  }
-
-  const handleSaveSlot = () => {
-    if (!slotStartTime || !slotEndTime) return
-    startTransition(async () => {
-      const isoStart = new Date(slotStartTime).toISOString()
-      const isoEnd = new Date(slotEndTime).toISOString()
-      if (editingSlotId) {
-        await updateInterviewSlot(editingSlotId, {
-          startTime: isoStart,
-          endTime: isoEnd,
-          location: slotLocation,
-          virtualLink: slotVirtualLink,
-        })
-      } else {
-        await createInterviewSlot(cycle.id, {
-          startTime: isoStart,
-          endTime: isoEnd,
-          location: slotLocation,
-          virtualLink: slotVirtualLink,
-        })
-      }
-      closeSlotForm()
-    })
-  }
-
-  const handleDeleteSlot = (slotId: string) => {
-    startTransition(async () => {
-      await deleteInterviewSlot(slotId)
-    })
-  }
-
-  const slotFormJsx = (
-    <Card className="border-primary/40">
-      <CardContent className="pt-4 space-y-4">
-        <div className="grid grid-cols-2 gap-4">
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-foreground">Start Time</label>
-            <input
-              type="datetime-local"
-              value={slotStartTime}
-              onChange={(e) => setSlotStartTime(e.target.value)}
-              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-            />
-          </div>
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-foreground">End Time</label>
-            <input
-              type="datetime-local"
-              value={slotEndTime}
-              onChange={(e) => setSlotEndTime(e.target.value)}
-              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-            />
-          </div>
-        </div>
-        <div className="grid grid-cols-2 gap-4">
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-foreground">Location</label>
-            <Input
-              value={slotLocation}
-              onChange={(e) => setSlotLocation(e.target.value)}
-              placeholder="Room 101..."
-            />
-          </div>
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-foreground">Virtual Link</label>
-            <Input
-              value={slotVirtualLink}
-              onChange={(e) => setSlotVirtualLink(e.target.value)}
-              placeholder="https://zoom.us/..."
-            />
-          </div>
-        </div>
-        <div className="flex items-center gap-2 pt-2">
-          <Button size="sm" onClick={handleSaveSlot} disabled={isPending || !slotStartTime || !slotEndTime}>
-            {isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : null}
-            {editingSlotId ? "Save Changes" : "Add Slot"}
-          </Button>
-          <Button size="sm" variant="ghost" onClick={closeSlotForm} disabled={isPending}>
-            Cancel
-          </Button>
-        </div>
-      </CardContent>
-    </Card>
-  )
 
   return (
     <div className="space-y-8">
@@ -1382,10 +1112,10 @@ function RecruitingEditor({
         </Card>
       </div>
 
-      {/* Section 3: Coffee Chats */}
+      {/* Section 3: Coffee Chats & Interviews */}
       <div>
         <div className="flex items-center justify-between mb-3">
-          <h3 className="font-semibold text-foreground">Coffee Chats</h3>
+          <h3 className="font-semibold text-foreground">Coffee Chats & Interviews</h3>
           {!editingCoffeeChat && (
             <button
               onClick={openCoffeeChatEdit}
@@ -1423,7 +1153,7 @@ function RecruitingEditor({
                 <Textarea
                   value={coffeeChatNote}
                   onChange={(e) => setCoffeeChatNote(e.target.value)}
-                  placeholder="Add a note about coffee chat scheduling..."
+                  placeholder="Add a note about coffee chat and interview scheduling..."
                 />
               </div>
               <div className="flex items-center gap-2 pt-2">
@@ -1452,79 +1182,10 @@ function RecruitingEditor({
                 <span className="text-xs text-muted-foreground">Note: </span>
                 <span className="text-sm text-foreground">{cycle.coffeeChatNote || "None"}</span>
               </div>
-              <p className="text-xs text-muted-foreground italic">Scheduling is managed outside this application.</p>
+              <p className="text-xs text-muted-foreground italic">Coffee chats and interviews are scheduled outside this application.</p>
             </CardContent>
           </Card>
         )}
-      </div>
-
-      {/* Section 4: Interview Slots */}
-      <div>
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="font-semibold text-foreground">Interview Slots</h3>
-          {!showAddSlotForm && !editingSlotId && (
-            <Button size="sm" onClick={openAddSlot} className="gap-1.5">
-              <Plus className="h-3.5 w-3.5" />
-              Add Slot
-            </Button>
-          )}
-        </div>
-
-        {showAddSlotForm && slotFormJsx}
-
-        {unassignedSlots.length === 0 && !showAddSlotForm && (
-          <Card>
-            <CardContent className="py-12 text-center">
-              <p className="text-muted-foreground mb-3">No interview slots yet. Add the first slot.</p>
-              <Button size="sm" onClick={openAddSlot} className="gap-1.5">
-                <Plus className="h-3.5 w-3.5" />
-                Add Slot
-              </Button>
-            </CardContent>
-          </Card>
-        )}
-
-        <div className="space-y-2">
-          {unassignedSlots.map((slot) => {
-            if (editingSlotId === slot.id) {
-              return <div key={slot.id}>{slotFormJsx}</div>
-            }
-            return (
-              <Card key={slot.id}>
-                <CardContent className="pt-4 pb-4">
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <p className="text-sm text-foreground">
-                        {formatDateTime(slot.startTime)} – {formatDateTime(slot.endTime)}
-                      </p>
-                      {(slot.location || slot.virtualLink) && (
-                        <p className="text-xs text-muted-foreground mt-0.5">
-                          {slot.location || slot.virtualLink}
-                        </p>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <button
-                        onClick={() => openEditSlot(slot)}
-                        disabled={isPending}
-                        className="p-1.5 text-muted-foreground hover:text-foreground disabled:opacity-25 transition-colors"
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </button>
-                      <button
-                        onClick={() => handleDeleteSlot(slot.id)}
-                        disabled={isPending}
-                        className="p-1.5 text-muted-foreground hover:text-destructive disabled:opacity-25 transition-colors"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            )
-          })}
-        </div>
       </div>
     </div>
   )
@@ -1534,7 +1195,7 @@ export function AdminDashboard({ team, applications, stats, cycle, reviewerId }:
   const [selectedApplication, setSelectedApplication] = useState<ApplicationWithDetails | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedSubteam, setSelectedSubteam] = useState("all")
-  const [activeTab, setActiveTab] = useState("table")
+  const [activeTab, setActiveTab] = useState("pipeline")
 
   const filteredApplications = applications.filter((app) => {
     const profile = app.student
@@ -1627,7 +1288,6 @@ export function AdminDashboard({ team, applications, stats, cycle, reviewerId }:
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
             <TabsList className="bg-muted">
-              <TabsTrigger value="table">Table View</TabsTrigger>
               <TabsTrigger value="pipeline">Pipeline View</TabsTrigger>
               <TabsTrigger value="questions">Application</TabsTrigger>
               <TabsTrigger value="recruiting">Recruiting</TabsTrigger>
@@ -1669,13 +1329,6 @@ export function AdminDashboard({ team, applications, stats, cycle, reviewerId }:
               </div>
             )}
           </div>
-
-          <TabsContent value="table">
-            <ApplicantTable
-              applications={filteredApplications}
-              onSelectApplicant={setSelectedApplication}
-            />
-          </TabsContent>
 
           <TabsContent value="pipeline">
             <div className="flex gap-4 overflow-x-auto pb-4">

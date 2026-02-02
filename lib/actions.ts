@@ -37,6 +37,9 @@ export async function saveApplicationDraft(
       teamId: input.teamId,
       isActive: true,
     },
+    include: {
+      questions: true,
+    },
   })
 
   if (!activeCycle) {
@@ -45,6 +48,12 @@ export async function saveApplicationDraft(
       error: "No active recruiting cycle found for this team",
     }
   }
+
+  // Get applicable questions (general + subteam-specific if selected)
+  const applicableQuestions = activeCycle.questions.filter(
+    (q) => q.subteamId === null || q.subteamId === input.subteamId
+  )
+  const totalQuestions = applicableQuestions.length
 
   // Find or create the application
   const existingApp = await db.application.findFirst({
@@ -71,7 +80,7 @@ export async function saveApplicationDraft(
       data: {
         subteamId: input.subteamId,
         lastSavedAt: new Date(),
-        completionPercent: calculateCompletion(input.answers),
+        completionPercent: calculateCompletion(input.answers, totalQuestions),
       },
     })
     applicationId = updated.id
@@ -84,7 +93,7 @@ export async function saveApplicationDraft(
         subteamId: input.subteamId,
         status: "DRAFT",
         lastSavedAt: new Date(),
-        completionPercent: calculateCompletion(input.answers),
+        completionPercent: calculateCompletion(input.answers, totalQuestions),
       },
     })
     applicationId = created.id
@@ -264,11 +273,13 @@ export async function removeResume() {
 // HELPERS
 // =============================================================================
 
-function calculateCompletion(answers: Record<string, string>): number {
-  const entries = Object.entries(answers)
-  if (entries.length === 0) return 0
-  const answered = entries.filter(([, v]) => v?.trim()).length
-  return Math.round((answered / entries.length) * 100)
+function calculateCompletion(answers: Record<string, string>, totalQuestions: number): number {
+  if (totalQuestions === 0) return 0
+  
+  // Count how many questions have non-empty answers
+  const answeredCount = Object.values(answers).filter((v) => v?.trim()).length
+  
+  return Math.round((answeredCount / totalQuestions) * 100)
 }
 
 async function saveResponses(applicationId: string, answers: Record<string, string>) {
@@ -340,6 +351,7 @@ export async function updateApplicationStatus(
   })
 
   revalidatePath("/admin")
+  revalidatePath(`/admin/applications/${applicationId}`)
 
   return { success: true }
 }
@@ -374,6 +386,7 @@ export async function addReviewScore(
   })
 
   revalidatePath("/admin")
+  revalidatePath(`/admin/applications/${applicationId}`)
 
   return { success: true, applicationScore }
 }
@@ -398,6 +411,7 @@ export async function addReviewNote(
   })
 
   revalidatePath("/admin")
+  revalidatePath(`/admin/applications/${applicationId}`)
 
   return { success: true, note }
 }

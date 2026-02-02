@@ -97,7 +97,11 @@ export const getApplicationById = cache(async (id: string) => {
   const application = await db.application.findUnique({
     where: { id },
     include: {
-      student: true,
+      student: {
+        include: {
+          user: true,
+        },
+      },
       cycle: {
         include: {
           team: true,
@@ -107,7 +111,22 @@ export const getApplicationById = cache(async (id: string) => {
         },
       },
       subteam: true,
-      responses: true,
+      responses: {
+        include: {
+          question: true,
+        },
+      },
+      applicationScores: {
+        include: {
+          reviewer: true,
+        },
+      },
+      reviewNotes: {
+        include: {
+          author: true,
+        },
+        orderBy: { createdAt: "desc" },
+      },
     },
   })
   return application
@@ -214,7 +233,6 @@ export const getTeamMembership = cache(async (userId: string) => {
             where: { isActive: true },
             include: {
               questions: { orderBy: { order: "asc" } },
-              interviewSlots: { orderBy: { startTime: "asc" } },
             },
           },
         },
@@ -239,7 +257,11 @@ export const getTeamApplications = cache(async (teamId: string) => {
         },
       },
       subteam: true,
-      responses: true,
+      responses: {
+        include: {
+          question: true,
+        },
+      },
       applicationScores: {
         include: {
           reviewer: true,

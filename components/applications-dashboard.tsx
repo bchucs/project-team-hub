@@ -385,19 +385,6 @@ export function ApplicationsDashboard({ applications, user }: ApplicationsDashbo
           <div className="space-y-6">
             <Card>
               <CardHeader className="pb-3">
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <Calendar className="h-5 w-5 text-primary" />
-                  Upcoming Deadlines
-                </CardTitle>
-                <CardDescription>Don&apos;t miss these important dates</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <UpcomingDeadlines applications={applications} />
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="pb-3">
                 <CardTitle className="text-lg">Quick Actions</CardTitle>
               </CardHeader>
               <CardContent className="space-y-2">

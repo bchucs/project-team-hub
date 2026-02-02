@@ -1,14 +1,14 @@
 import { PrismaClient, TeamCategory, QuestionType } from "@prisma/client"
 import { hashPassword } from "../lib/password"
-import { clearDatabase } from "./clear"
+import { clear } from "./clear"
 
 const prisma = new PrismaClient()
 
 async function main() {
   // Clear existing data first
-  await clearDatabase()
+  await clear()
   
-  console.log("🌱 Seeding database...")
+  console.log("Seeding database...")
 
   // Create a platform admin user (needed for createdBy relations)
   const hashedPassword = await hashPassword("password123")
@@ -25,7 +25,7 @@ async function main() {
     },
   })
 
-  console.log("✓ Created admin user")
+  console.log("Created admin user")
 
   // Team data
   const teamsData = [
@@ -202,7 +202,7 @@ async function main() {
       })
     }
 
-    console.log(`✓ Created team: ${team.name}`)
+    console.log(`Created team: ${team.name}`)
   }
 
   // Default application questions (used by all teams)
@@ -246,7 +246,7 @@ async function main() {
   ]
 
   // Create recruiting cycles for all teams
-  console.log("\n📅 Creating recruiting cycles...")
+  console.log("\nCreating recruiting cycles...")
 
   const allTeams = await prisma.team.findMany()
 
@@ -291,7 +291,7 @@ async function main() {
       })
     }
 
-    console.log(`✓ Created recruiting cycle for: ${team.name}`)
+    console.log(`Created recruiting cycle for: ${team.name}`)
   }
 
   // Create a sample student user with a predictable ID for testing
@@ -327,7 +327,7 @@ async function main() {
     },
   })
 
-  console.log("✓ Created sample student")
+  console.log("Created sample student")
 
   // Create a demo team leader with a predictable ID for testing
   const teamLeaderUser = await prisma.user.upsert({
@@ -437,13 +437,13 @@ async function main() {
         })
       }
 
-      console.log("✓ Created sample applications for Cornell AppDev")
+      console.log("Created sample applications for Cornell AppDev")
     }
   }
 
-  console.log("✓ Created demo team leader")
+  console.log("Created demo team leader")
 
-  console.log("\n✅ Seeding complete!")
+  console.log("\nSeeding complete!")
 }
 
 main()

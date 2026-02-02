@@ -69,7 +69,7 @@ interface ApplicationsSidebarProps {
 
 export function ApplicationsSidebar({ applications }: ApplicationsSidebarProps) {
   return (
-    <aside className="w-full lg:w-64 space-y-6 flex-shrink-0">
+    <aside className="w-full lg:w-64 space-y-6 shrink-0">
       <div>
         <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
           My Applications
