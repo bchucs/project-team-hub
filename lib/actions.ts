@@ -5,6 +5,11 @@ import { revalidatePath } from "next/cache"
 import { hashPassword } from "./password"
 import { S3Client, PutObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3"
 import { auth } from "./auth"
+import {
+  sendApplicationSubmittedEmail,
+  sendStatusUpdateEmail,
+  sendNewApplicationAlertEmail,
+} from "./email/notifications"
 
 const s3 = new S3Client({
   region: process.env.S3_REGION || "us-east-1",
@@ -108,6 +113,29 @@ export async function saveApplicationDraft(
 export async function submitApplication(applicationId: string) {
   const application = await db.application.findUnique({
     where: { id: applicationId },
+    include: {
+      student: {
+        include: {
+          user: true,
+        },
+      },
+      cycle: {
+        include: {
+          team: {
+            include: {
+              memberships: {
+                where: {
+                  role: { in: ["LEAD", "REVIEWER"] },
+                },
+                include: {
+                  user: true,
+                },
+              },
+            },
+          },
+        },
+      },
+    },
   })
 
   if (!application) {
@@ -118,16 +146,47 @@ export async function submitApplication(applicationId: string) {
     return { success: false, error: "Application already submitted" }
   }
 
+  const submittedAt = new Date()
+
   await db.application.update({
     where: { id: applicationId },
     data: {
       status: "SUBMITTED",
-      submittedAt: new Date(),
+      submittedAt,
       completionPercent: 100,
     },
   })
 
   revalidatePath("/applications")
+
+  // Send confirmation email to student (non-blocking)
+  sendApplicationSubmittedEmail(application.student.user.email, {
+    studentName: `${application.student.firstName} ${application.student.lastName}`,
+    teamName: application.cycle.team.name,
+    applicationId: application.id,
+    submittedAt,
+  }).catch((error) => {
+    console.error("Failed to send application submitted email:", error)
+  })
+
+  // Send alert emails to team leads (non-blocking)
+  const teamLeads = application.cycle.team.memberships
+    .filter((m) => m.role === "LEAD")
+    .map((m) => m.user)
+
+  teamLeads.forEach((lead) => {
+    sendNewApplicationAlertEmail(lead.email, {
+      studentName: `${application.student.firstName} ${application.student.lastName}`,
+      studentEmail: application.student.user.email,
+      teamName: application.cycle.team.name,
+      applicationId: application.id,
+      submittedAt,
+      studentYear: application.student.year,
+      studentMajor: application.student.major,
+    }).catch((error) => {
+      console.error("Failed to send new application alert:", error)
+    })
+  })
 
   return { success: true }
 }
@@ -337,13 +396,47 @@ export async function updateApplicationStatus(
   applicationId: string,
   status: "SUBMITTED" | "UNDER_REVIEW" | "INTERVIEW" | "OFFER" | "ACCEPTED" | "REJECTED"
 ) {
+  // Authentication check
+  const session = await auth()
+  if (!session?.user?.id) {
+    return { success: false, error: "Not authenticated" }
+  }
+
   const application = await db.application.findUnique({
     where: { id: applicationId },
+    include: {
+      student: {
+        include: {
+          user: true,
+        },
+      },
+      cycle: {
+        include: {
+          team: {
+            include: {
+              memberships: {
+                where: {
+                  userId: session.user.id,
+                  role: { in: ["LEAD", "REVIEWER"] },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
   })
 
   if (!application) {
     return { success: false, error: "Application not found" }
   }
+
+  // Authorization check: verify user is team lead or reviewer for this team
+  if (application.cycle.team.memberships.length === 0) {
+    return { success: false, error: "Unauthorized: You do not have permission to review this application" }
+  }
+
+  const oldStatus = application.status
 
   await db.application.update({
     where: { id: applicationId },
@@ -353,17 +446,66 @@ export async function updateApplicationStatus(
   revalidatePath("/admin")
   revalidatePath(`/admin/applications/${applicationId}`)
 
+  // Send status update email for significant status changes (non-blocking)
+  const significantStatuses = ["INTERVIEW", "OFFER", "ACCEPTED", "REJECTED"]
+  if (significantStatuses.includes(status)) {
+    sendStatusUpdateEmail(application.student.user.email, {
+      studentName: `${application.student.firstName} ${application.student.lastName}`,
+      teamName: application.cycle.team.name,
+      oldStatus,
+      newStatus: status,
+      applicationId: application.id,
+    }).catch((error) => {
+      console.error("Failed to send status update email:", error)
+    })
+  }
+
   return { success: true }
 }
 
 export async function addReviewScore(
   applicationId: string,
-  reviewerId: string,
   score: number,
   criteria?: Record<string, number>
 ) {
+  // Authentication check
+  const session = await auth()
+  if (!session?.user?.id) {
+    return { success: false, error: "Not authenticated" }
+  }
+  const reviewerId = session.user.id
+
   if (score < 1 || score > 5) {
     return { success: false, error: "Score must be between 1 and 5" }
+  }
+
+  // Authorization check: verify user has access to this application
+  const application = await db.application.findUnique({
+    where: { id: applicationId },
+    include: {
+      cycle: {
+        include: {
+          team: {
+            include: {
+              memberships: {
+                where: {
+                  userId: reviewerId,
+                  role: { in: ["LEAD", "REVIEWER"] },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  })
+
+  if (!application) {
+    return { success: false, error: "Application not found" }
+  }
+
+  if (application.cycle.team.memberships.length === 0) {
+    return { success: false, error: "Unauthorized: You do not have permission to review this application" }
   }
 
   const applicationScore = await db.applicationScore.upsert({
@@ -393,12 +535,47 @@ export async function addReviewScore(
 
 export async function addReviewNote(
   applicationId: string,
-  authorId: string,
   content: string,
   isPrivate: boolean = false
 ) {
+  // Authentication check
+  const session = await auth()
+  if (!session?.user?.id) {
+    return { success: false, error: "Not authenticated" }
+  }
+  const authorId = session.user.id
+
   if (!content.trim()) {
     return { success: false, error: "Note content is required" }
+  }
+
+  // Authorization check: verify user has access to this application
+  const application = await db.application.findUnique({
+    where: { id: applicationId },
+    include: {
+      cycle: {
+        include: {
+          team: {
+            include: {
+              memberships: {
+                where: {
+                  userId: authorId,
+                  role: { in: ["LEAD", "REVIEWER"] },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  })
+
+  if (!application) {
+    return { success: false, error: "Application not found" }
+  }
+
+  if (application.cycle.team.memberships.length === 0) {
+    return { success: false, error: "Unauthorized: You do not have permission to review this application" }
   }
 
   const note = await db.reviewNote.create({
@@ -416,17 +593,49 @@ export async function addReviewNote(
   return { success: true, note }
 }
 
-export async function deleteReviewNote(noteId: string, userId: string) {
+export async function deleteReviewNote(noteId: string) {
+  // Authentication check
+  const session = await auth()
+  if (!session?.user?.id) {
+    return { success: false, error: "Not authenticated" }
+  }
+  const userId = session.user.id
+
   const note = await db.reviewNote.findUnique({
     where: { id: noteId },
+    include: {
+      application: {
+        include: {
+          cycle: {
+            include: {
+              team: {
+                include: {
+                  memberships: {
+                    where: {
+                      userId: userId,
+                      role: { in: ["LEAD", "REVIEWER"] },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
   })
 
   if (!note) {
     return { success: false, error: "Note not found" }
   }
 
+  // Authorization check: must be the note author AND a team member
   if (note.authorId !== userId) {
     return { success: false, error: "You can only delete your own notes" }
+  }
+
+  if (note.application.cycle.team.memberships.length === 0) {
+    return { success: false, error: "Unauthorized: You do not have permission to access this team" }
   }
 
   await db.reviewNote.delete({
@@ -451,7 +660,39 @@ interface CreateQuestionInput {
   subteamId?: string | null
 }
 
-export async function createQuestion(cycleId: string, userId: string, input: CreateQuestionInput) {
+export async function createQuestion(cycleId: string, input: CreateQuestionInput) {
+  // Authentication check
+  const session = await auth()
+  if (!session?.user?.id) {
+    return { success: false, error: "Not authenticated" }
+  }
+  const userId = session.user.id
+
+  // Authorization check: verify user is team lead for this cycle
+  const cycle = await db.recruitingCycle.findUnique({
+    where: { id: cycleId },
+    include: {
+      team: {
+        include: {
+          memberships: {
+            where: {
+              userId: userId,
+              role: "LEAD",
+            },
+          },
+        },
+      },
+    },
+  })
+
+  if (!cycle) {
+    return { success: false, error: "Recruiting cycle not found" }
+  }
+
+  if (cycle.team.memberships.length === 0) {
+    return { success: false, error: "Unauthorized: Only team leads can manage questions" }
+  }
+
   const maxOrder = await db.applicationQuestion.aggregate({
     _max: { order: true },
     where: { cycleId, subteamId: input.subteamId ?? null },
@@ -485,7 +726,43 @@ interface UpdateQuestionInput {
   options?: string[]
 }
 
-export async function updateQuestion(questionId: string, userId: string, input: UpdateQuestionInput) {
+export async function updateQuestion(questionId: string, input: UpdateQuestionInput) {
+  // Authentication check
+  const session = await auth()
+  if (!session?.user?.id) {
+    return { success: false, error: "Not authenticated" }
+  }
+  const userId = session.user.id
+
+  // Authorization check: verify user is team lead for this question's cycle
+  const question = await db.applicationQuestion.findUnique({
+    where: { id: questionId },
+    include: {
+      cycle: {
+        include: {
+          team: {
+            include: {
+              memberships: {
+                where: {
+                  userId: userId,
+                  role: "LEAD",
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  })
+
+  if (!question) {
+    return { success: false, error: "Question not found" }
+  }
+
+  if (question.cycle.team.memberships.length === 0) {
+    return { success: false, error: "Unauthorized: Only team leads can manage questions" }
+  }
+
   const data: Record<string, unknown> = { updatedById: userId }
 
   if (input.question !== undefined) data.question = input.question
@@ -508,12 +785,40 @@ export async function updateQuestion(questionId: string, userId: string, input: 
 }
 
 export async function deleteQuestion(questionId: string) {
+  // Authentication check
+  const session = await auth()
+  if (!session?.user?.id) {
+    return { success: false, error: "Not authenticated" }
+  }
+  const userId = session.user.id
+
   const question = await db.applicationQuestion.findUnique({
     where: { id: questionId },
+    include: {
+      cycle: {
+        include: {
+          team: {
+            include: {
+              memberships: {
+                where: {
+                  userId: userId,
+                  role: "LEAD",
+                },
+              },
+            },
+          },
+        },
+      },
+    },
   })
 
   if (!question) {
     return { success: false, error: "Question not found" }
+  }
+
+  // Authorization check: verify user is team lead
+  if (question.cycle.team.memberships.length === 0) {
+    return { success: false, error: "Unauthorized: Only team leads can manage questions" }
   }
 
   await db.applicationQuestion.delete({
@@ -537,11 +842,39 @@ export async function deleteQuestion(questionId: string) {
 }
 
 export async function moveQuestion(questionId: string, newOrder: number) {
+  // Authentication check
+  const session = await auth()
+  if (!session?.user?.id) {
+    return { success: false, error: "Not authenticated" }
+  }
+  const userId = session.user.id
+
   const question = await db.applicationQuestion.findUnique({
     where: { id: questionId },
+    include: {
+      cycle: {
+        include: {
+          team: {
+            include: {
+              memberships: {
+                where: {
+                  userId: userId,
+                  role: "LEAD",
+                },
+              },
+            },
+          },
+        },
+      },
+    },
   })
 
   if (!question) return { success: false, error: "Question not found" }
+
+  // Authorization check: verify user is team lead
+  if (question.cycle.team.memberships.length === 0) {
+    return { success: false, error: "Unauthorized: Only team leads can manage questions" }
+  }
 
   const oldOrder = question.order
   if (oldOrder === newOrder) return { success: true }
@@ -592,8 +925,35 @@ interface UpdateCycleTimelineInput {
 }
 
 export async function updateCycleTimeline(cycleId: string, input: UpdateCycleTimelineInput) {
-  const cycle = await db.recruitingCycle.findUnique({ where: { id: cycleId } })
+  // Authentication check
+  const session = await auth()
+  if (!session?.user?.id) {
+    return { success: false, error: "Not authenticated" }
+  }
+  const userId = session.user.id
+
+  const cycle = await db.recruitingCycle.findUnique({
+    where: { id: cycleId },
+    include: {
+      team: {
+        include: {
+          memberships: {
+            where: {
+              userId: userId,
+              role: "LEAD",
+            },
+          },
+        },
+      },
+    },
+  })
+
   if (!cycle) return { success: false, error: "Recruiting cycle not found" }
+
+  // Authorization check: verify user is team lead
+  if (cycle.team.memberships.length === 0) {
+    return { success: false, error: "Unauthorized: Only team leads can manage recruiting cycles" }
+  }
 
   await db.recruitingCycle.update({
     where: { id: cycleId },
@@ -619,8 +979,35 @@ interface UpdateCoffeeChatInput {
 }
 
 export async function updateCoffeeChat(cycleId: string, input: UpdateCoffeeChatInput) {
-  const cycle = await db.recruitingCycle.findUnique({ where: { id: cycleId } })
+  // Authentication check
+  const session = await auth()
+  if (!session?.user?.id) {
+    return { success: false, error: "Not authenticated" }
+  }
+  const userId = session.user.id
+
+  const cycle = await db.recruitingCycle.findUnique({
+    where: { id: cycleId },
+    include: {
+      team: {
+        include: {
+          memberships: {
+            where: {
+              userId: userId,
+              role: "LEAD",
+            },
+          },
+        },
+      },
+    },
+  })
+
   if (!cycle) return { success: false, error: "Recruiting cycle not found" }
+
+  // Authorization check: verify user is team lead
+  if (cycle.team.memberships.length === 0) {
+    return { success: false, error: "Unauthorized: Only team leads can manage recruiting cycles" }
+  }
 
   await db.recruitingCycle.update({
     where: { id: cycleId },
@@ -636,8 +1023,35 @@ export async function updateCoffeeChat(cycleId: string, input: UpdateCoffeeChatI
 }
 
 export async function updateSubteamRecruiting(subteamId: string, isRecruiting: boolean) {
-  const subteam = await db.subteam.findUnique({ where: { id: subteamId } })
+  // Authentication check
+  const session = await auth()
+  if (!session?.user?.id) {
+    return { success: false, error: "Not authenticated" }
+  }
+  const userId = session.user.id
+
+  const subteam = await db.subteam.findUnique({
+    where: { id: subteamId },
+    include: {
+      team: {
+        include: {
+          memberships: {
+            where: {
+              userId: userId,
+              role: "LEAD",
+            },
+          },
+        },
+      },
+    },
+  })
+
   if (!subteam) return { success: false, error: "Subteam not found" }
+
+  // Authorization check: verify user is team lead
+  if (subteam.team.memberships.length === 0) {
+    return { success: false, error: "Unauthorized: Only team leads can manage subteams" }
+  }
 
   await db.subteam.update({
     where: { id: subteamId },
@@ -657,8 +1071,35 @@ interface CreateInterviewSlotInput {
 }
 
 export async function createInterviewSlot(cycleId: string, input: CreateInterviewSlotInput) {
-  const cycle = await db.recruitingCycle.findUnique({ where: { id: cycleId } })
+  // Authentication check
+  const session = await auth()
+  if (!session?.user?.id) {
+    return { success: false, error: "Not authenticated" }
+  }
+  const userId = session.user.id
+
+  const cycle = await db.recruitingCycle.findUnique({
+    where: { id: cycleId },
+    include: {
+      team: {
+        include: {
+          memberships: {
+            where: {
+              userId: userId,
+              role: "LEAD",
+            },
+          },
+        },
+      },
+    },
+  })
+
   if (!cycle) return { success: false, error: "Recruiting cycle not found" }
+
+  // Authorization check: verify user is team lead
+  if (cycle.team.memberships.length === 0) {
+    return { success: false, error: "Unauthorized: Only team leads can manage interview slots" }
+  }
 
   await db.interviewSlot.create({
     data: {
@@ -684,8 +1125,39 @@ interface UpdateInterviewSlotInput {
 }
 
 export async function updateInterviewSlot(slotId: string, input: UpdateInterviewSlotInput) {
-  const slot = await db.interviewSlot.findUnique({ where: { id: slotId } })
+  // Authentication check
+  const session = await auth()
+  if (!session?.user?.id) {
+    return { success: false, error: "Not authenticated" }
+  }
+  const userId = session.user.id
+
+  const slot = await db.interviewSlot.findUnique({
+    where: { id: slotId },
+    include: {
+      cycle: {
+        include: {
+          team: {
+            include: {
+              memberships: {
+                where: {
+                  userId: userId,
+                  role: "LEAD",
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  })
+
   if (!slot) return { success: false, error: "Interview slot not found" }
+
+  // Authorization check: verify user is team lead
+  if (slot.cycle.team.memberships.length === 0) {
+    return { success: false, error: "Unauthorized: Only team leads can manage interview slots" }
+  }
 
   await db.interviewSlot.update({
     where: { id: slotId },
@@ -702,8 +1174,39 @@ export async function updateInterviewSlot(slotId: string, input: UpdateInterview
 }
 
 export async function deleteInterviewSlot(slotId: string) {
-  const slot = await db.interviewSlot.findUnique({ where: { id: slotId } })
+  // Authentication check
+  const session = await auth()
+  if (!session?.user?.id) {
+    return { success: false, error: "Not authenticated" }
+  }
+  const userId = session.user.id
+
+  const slot = await db.interviewSlot.findUnique({
+    where: { id: slotId },
+    include: {
+      cycle: {
+        include: {
+          team: {
+            include: {
+              memberships: {
+                where: {
+                  userId: userId,
+                  role: "LEAD",
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  })
+
   if (!slot) return { success: false, error: "Interview slot not found" }
+
+  // Authorization check: verify user is team lead
+  if (slot.cycle.team.memberships.length === 0) {
+    return { success: false, error: "Unauthorized: Only team leads can manage interview slots" }
+  }
 
   await db.interviewSlot.delete({ where: { id: slotId } })
 

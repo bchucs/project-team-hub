@@ -231,7 +231,7 @@ function ApplicantDetailPanel({
   const handleRatingClick = (rating: number) => {
     setMyRating(rating)
     startTransition(async () => {
-      await addReviewScore(application.id, reviewerId, rating)
+      await addReviewScore(application.id, rating)
     })
   }
 
@@ -547,7 +547,7 @@ function QuestionEditor({
     if (!formQuestion.trim() || !cycle) return
     startTransition(async () => {
       if (editingId) {
-        await updateQuestion(editingId, reviewerId, {
+        await updateQuestion(editingId, {
           question: formQuestion.trim(),
           description: formDescription.trim(),
           type: formType,
@@ -555,7 +555,7 @@ function QuestionEditor({
           options: cleanOptions,
         })
       } else {
-        await createQuestion(cycle.id, reviewerId, {
+        await createQuestion(cycle.id, {
           question: formQuestion.trim(),
           description: formDescription.trim(),
           type: formType,

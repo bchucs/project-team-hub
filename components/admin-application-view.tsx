@@ -81,7 +81,7 @@ export function AdminApplicationView({ application, reviewerId }: AdminApplicati
   const handleRatingClick = (rating: number) => {
     setMyRating(rating)
     startTransition(async () => {
-      await addReviewScore(application.id, reviewerId, rating)
+      await addReviewScore(application.id, rating)
       router.refresh()
     })
   }
@@ -89,7 +89,7 @@ export function AdminApplicationView({ application, reviewerId }: AdminApplicati
   const handleAddNote = () => {
     if (!noteContent.trim()) return
     startTransition(async () => {
-      await addReviewNote(application.id, reviewerId, noteContent)
+      await addReviewNote(application.id, noteContent)
       setNoteContent("")
       setShowNoteForm(false)
       router.refresh()
