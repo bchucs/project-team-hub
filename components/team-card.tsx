@@ -3,7 +3,7 @@
 import React from "react"
 
 import Link from "next/link"
-import { Users, Calendar, Bookmark } from "lucide-react"
+import { Users, Calendar } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
@@ -12,18 +12,16 @@ import type { TeamCardViewModel, ApplicationCardViewModel } from "@/lib/view-mod
 interface TeamCardProps {
   team: TeamCardViewModel
   application?: ApplicationCardViewModel
-  onBookmark?: () => void
-  isBookmarked?: boolean
 }
 
-export function TeamCard({ team, application, onBookmark, isBookmarked }: TeamCardProps) {
+export function TeamCard({ team, application }: TeamCardProps) {
   const getStatusButton = () => {
     if (!application) {
       return (
-        <div className="flex items-center justify-between">
-          <span className="text-sm text-muted-foreground">Not started</span>
-          <Link href={`/apply/${team.slug}`}>
-            <Button size="sm" className="bg-primary hover:bg-primary/90 text-primary-foreground">
+        <div className="flex items-center justify-between min-h-[2rem]">
+          <span className="flex items-center text-sm text-muted-foreground">Not started</span>
+          <Link href={`/apply/${team.slug}`} className="cursor-pointer">
+            <Button size="sm">
               Start Application
             </Button>
           </Link>
@@ -36,12 +34,12 @@ export function TeamCard({ team, application, onBookmark, isBookmarked }: TeamCa
       case "interview":
       case "offer":
         return (
-          <div className="flex items-center justify-between">
-            <span className="flex items-center gap-1.5 text-sm text-emerald-600">
+          <div className="flex items-center justify-between min-h-[2rem]">
+            <span className="flex items-center gap-2 text-sm text-emerald-600">
               <span className="h-2 w-2 rounded-full bg-emerald-500" />
               Submitted
             </span>
-            <Link href={`/applications/${application.id}`}>
+            <Link href={`/applications/${application.id}`} className="cursor-pointer">
               <Button variant="outline" size="sm">
                 View Application
               </Button>
@@ -50,12 +48,12 @@ export function TeamCard({ team, application, onBookmark, isBookmarked }: TeamCa
         )
       case "rejected":
         return (
-          <div className="flex items-center justify-between">
-            <span className="flex items-center gap-1.5 text-sm text-muted-foreground">
+          <div className="flex items-center justify-between min-h-[2rem]">
+            <span className="flex items-center gap-2 text-sm text-muted-foreground">
               <span className="h-2 w-2 rounded-full bg-muted-foreground" />
               Submitted
             </span>
-            <Link href={`/applications/${application.id}`}>
+            <Link href={`/applications/${application.id}`} className="cursor-pointer">
               <Button variant="outline" size="sm">
                 View Application
               </Button>
@@ -64,10 +62,10 @@ export function TeamCard({ team, application, onBookmark, isBookmarked }: TeamCa
         )
       case "in-progress":
         return (
-          <div className="flex items-center justify-between">
-            <span className="text-sm text-muted-foreground">Application in progress</span>
-            <Link href={`/apply/${team.slug}`}>
-              <Button size="sm" className="bg-primary hover:bg-primary/90 text-primary-foreground">
+          <div className="flex items-center justify-between min-h-[2rem]">
+            <span className="flex items-center text-sm text-muted-foreground">Application in progress</span>
+            <Link href={`/apply/${team.slug}`} className="cursor-pointer">
+              <Button size="sm">
                 Continue
               </Button>
             </Link>
@@ -75,10 +73,10 @@ export function TeamCard({ team, application, onBookmark, isBookmarked }: TeamCa
         )
       case "draft":
         return (
-          <div className="flex items-center justify-between">
-            <span className="text-sm text-muted-foreground">Draft</span>
-            <Link href={`/apply/${team.slug}`}>
-              <Button size="sm" className="bg-primary hover:bg-primary/90 text-primary-foreground">
+          <div className="flex items-center justify-between min-h-[2rem]">
+            <span className="flex items-center text-sm text-muted-foreground">Draft</span>
+            <Link href={`/apply/${team.slug}`} className="cursor-pointer">
+              <Button size="sm">
                 Continue
               </Button>
             </Link>
@@ -86,10 +84,10 @@ export function TeamCard({ team, application, onBookmark, isBookmarked }: TeamCa
         )
       default:
         return (
-          <div className="flex items-center justify-between">
-            <span className="text-sm text-muted-foreground">Not started</span>
+          <div className="flex items-center justify-between min-h-[2rem]">
+            <span className="flex items-center text-sm text-muted-foreground">Not started</span>
             <Link href={`/apply/${team.slug}`}>
-              <Button size="sm" className="bg-primary hover:bg-primary/90 text-primary-foreground">
+              <Button size="sm">
                 Start Application
               </Button>
             </Link>
@@ -106,9 +104,9 @@ export function TeamCard({ team, application, onBookmark, isBookmarked }: TeamCa
     : "Not recruiting"
 
   return (
-    <Card className="overflow-hidden hover:shadow-lg transition-shadow border-border">
+    <Card className="overflow-hidden hover:shadow-md transition-shadow border-border">
       <div
-        className="relative h-32 p-4"
+        className="relative h-36 p-4"
         style={{ backgroundColor: team.brandColor }}
       >
         <Badge
@@ -118,28 +116,19 @@ export function TeamCard({ team, application, onBookmark, isBookmarked }: TeamCa
           {team.category}
         </Badge>
         <div className="absolute bottom-4 left-4">
-          <span className="text-3xl font-bold text-white/80">
+          <span className="text-2xl font-bold text-white/80">
             {team.name.charAt(0)}
           </span>
         </div>
       </div>
-      <div className="p-4 space-y-3">
-        <div className="flex items-start justify-between">
-          <Link href={`/teams/${team.slug}`} className="group flex-1 min-w-0">
+      <div className="p-4 space-y-4">
+        <div>
+          <Link href={`/teams/${team.slug}`} className="group">
             <h3 className="font-semibold text-foreground group-hover:text-primary transition-colors">{team.name}</h3>
-            <p className="text-sm text-muted-foreground line-clamp-2">{team.description}</p>
+            <p className="text-sm text-muted-foreground line-clamp-2 min-h-[2.5rem]">{team.description}</p>
           </Link>
-          <button
-            onClick={onBookmark}
-            className="text-muted-foreground hover:text-primary transition-colors ml-2 flex-shrink-0"
-            aria-label={isBookmarked ? "Remove bookmark" : "Add bookmark"}
-          >
-            <Bookmark
-              className={`h-5 w-5 ${isBookmarked ? "fill-primary text-primary" : ""}`}
-            />
-          </button>
         </div>
-        <div className="flex flex-wrap gap-1.5">
+        <div className="flex flex-wrap gap-2">
           {team.tags.slice(0, 3).map((tag) => (
             <Badge key={tag} variant="outline" className="text-xs font-normal">
               {tag}

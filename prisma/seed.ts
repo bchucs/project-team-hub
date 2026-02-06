@@ -169,6 +169,20 @@ async function main() {
       brandColor: "#22C55E",
       subteams: ["Ghana Program", "Ecuador Program", "Morocco Program", "Fundraising"],
     },
+    {
+      name: "CUAir",
+      slug: "cuair",
+      category: "AEROSPACE" as TeamCategory,
+      shortDescription: "CUAir (Cornell University Unmanned Air Systems) is an undergraduate-led student project team that designs, builds, and tests autonomous unmanned aircraft for search and rescue missions and competition.",
+      description: "CUAir (Cornell University Unmanned Air Systems) is an undergraduate-led student project team that designs, builds, and tests autonomous unmanned aircraft for search and rescue missions. We compete annually in the Association for Unmanned Vehicle Systems International (AUVSI SUAS) competition, developing cutting-edge UAS technology that combines mechanical design, electrical systems, embedded software, and computer vision for autonomous flight and object detection.",
+      contactEmail: "cuair.mae@gmail.com",
+      websiteUrl: "https://cuair.org/",
+      instagramHandle: "cuairmae",
+      memberCount: 70,
+      tags: ["aerospace", "robotics", "autonomy", "UAS", "embedded systems"],
+      brandColor: "#3B82F6",
+      subteams: ["Electrical", "Mechanical", "Software", "Design & Operations"],
+    },
   ]
 
   // Create teams with subteams
@@ -344,41 +358,41 @@ async function main() {
     },
   })
 
-  // Link team leader to Cornell AppDev
-  const appDevTeam = await prisma.team.findUnique({ where: { slug: "cornell-appdev" } })
-  if (appDevTeam) {
+  // Link team leader to CUAir
+  const cuairTeam = await prisma.team.findUnique({ where: { slug: "cuair" } })
+  if (cuairTeam) {
     await prisma.teamMembership.upsert({
       where: {
         teamId_userId: {
           userId: teamLeaderUser.id,
-          teamId: appDevTeam.id,
+          teamId: cuairTeam.id,
         },
       },
       update: {},
       create: {
         userId: teamLeaderUser.id,
-        teamId: appDevTeam.id,
+        teamId: cuairTeam.id,
         role: "LEAD",
         joinedAt: new Date("2023-09-01"),
       },
     })
 
-    // Get the active recruiting cycle for AppDev
-    const appDevCycle = await prisma.recruitingCycle.findFirst({
-      where: { teamId: appDevTeam.id, isActive: true },
+    // Get the active recruiting cycle for CUAir
+    const cuairCycle = await prisma.recruitingCycle.findFirst({
+      where: { teamId: cuairTeam.id, isActive: true },
     })
 
-    if (appDevCycle) {
-      // Create sample applications for AppDev
+    if (cuairCycle) {
+      // Create sample applications for CUAir
       const sampleApplicants = [
-        { firstName: "Alex", lastName: "Johnson", netId: "aj456", email: "aj456@cornell.edu", year: "SOPHOMORE" as const, major: "Computer Science", subteam: "iOS" },
-        { firstName: "Maria", lastName: "Garcia", netId: "mg789", email: "mg789@cornell.edu", year: "JUNIOR" as const, major: "Information Science", subteam: "Backend" },
-        { firstName: "James", lastName: "Chen", netId: "jc123", email: "jc123@cornell.edu", year: "FRESHMAN" as const, major: "Computer Science", subteam: "iOS" },
-        { firstName: "Emily", lastName: "Brown", netId: "eb234", email: "eb234@cornell.edu", year: "SENIOR" as const, major: "Computer Science", subteam: "Android" },
-        { firstName: "David", lastName: "Kim", netId: "dk567", email: "dk567@cornell.edu", year: "SOPHOMORE" as const, major: "Computer Science", subteam: "Backend" },
-        { firstName: "Sarah", lastName: "Miller", netId: "sm890", email: "sm890@cornell.edu", year: "JUNIOR" as const, major: "Information Science", subteam: "Product Design" },
-        { firstName: "Michael", lastName: "Lee", netId: "ml111", email: "ml111@cornell.edu", year: "FRESHMAN" as const, major: "Computer Science", subteam: "iOS" },
-        { firstName: "Lisa", lastName: "Wang", netId: "lw222", email: "lw222@cornell.edu", year: "JUNIOR" as const, major: "Computer Science", subteam: "Backend" },
+        { firstName: "Alex", lastName: "Johnson", netId: "aj456", email: "aj456@cornell.edu", year: "SOPHOMORE" as const, major: "Mechanical Engineering", subteam: "Mechanical" },
+        { firstName: "Maria", lastName: "Garcia", netId: "mg789", email: "mg789@cornell.edu", year: "JUNIOR" as const, major: "Electrical Engineering", subteam: "Electrical" },
+        { firstName: "James", lastName: "Chen", netId: "jc123", email: "jc123@cornell.edu", year: "FRESHMAN" as const, major: "Computer Science", subteam: "Software" },
+        { firstName: "Emily", lastName: "Brown", netId: "eb234", email: "eb234@cornell.edu", year: "SENIOR" as const, major: "Mechanical Engineering", subteam: "Design & Operations" },
+        { firstName: "David", lastName: "Kim", netId: "dk567", email: "dk567@cornell.edu", year: "SOPHOMORE" as const, major: "Computer Engineering", subteam: "Electrical" },
+        { firstName: "Sarah", lastName: "Miller", netId: "sm890", email: "sm890@cornell.edu", year: "JUNIOR" as const, major: "Computer Science", subteam: "Software" },
+        { firstName: "Michael", lastName: "Lee", netId: "ml111", email: "ml111@cornell.edu", year: "FRESHMAN" as const, major: "Aerospace Engineering", subteam: "Mechanical" },
+        { firstName: "Lisa", lastName: "Wang", netId: "lw222", email: "lw222@cornell.edu", year: "JUNIOR" as const, major: "Computer Science", subteam: "Software" },
       ]
 
       const statuses = ["SUBMITTED", "UNDER_REVIEW", "INTERVIEW", "OFFER", "ACCEPTED", "REJECTED"] as const
@@ -418,7 +432,7 @@ async function main() {
 
         // Find subteam
         const subteam = await prisma.subteam.findFirst({
-          where: { teamId: appDevTeam.id, name: applicant.subteam },
+          where: { teamId: cuairTeam.id, name: applicant.subteam },
         })
 
         // Create application - studentId references StudentProfile.id
@@ -428,7 +442,7 @@ async function main() {
           create: {
             id: `sample-app-${i}`,
             studentId: profile.id,
-            cycleId: appDevCycle.id,
+            cycleId: cuairCycle.id,
             subteamId: subteam?.id || null,
             status: statuses[i % statuses.length],
             completionPercent: 100,
@@ -437,7 +451,7 @@ async function main() {
         })
       }
 
-      console.log("Created sample applications for Cornell AppDev")
+      console.log("Created sample applications for CUAir")
     }
   }
 

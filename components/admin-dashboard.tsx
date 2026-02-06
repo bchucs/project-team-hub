@@ -82,12 +82,12 @@ interface AdminDashboardProps {
 }
 
 const pipelineStages = [
-  { id: "SUBMITTED", label: "Submitted", color: "bg-blue-500" },
-  { id: "UNDER_REVIEW", label: "Reviewing", color: "bg-amber-500" },
-  { id: "INTERVIEW", label: "Interview", color: "bg-purple-500" },
-  { id: "OFFER", label: "Offer", color: "bg-emerald-500" },
-  { id: "ACCEPTED", label: "Accepted", color: "bg-emerald-600" },
-  { id: "REJECTED", label: "Rejected", color: "bg-gray-400" },
+  { id: "SUBMITTED", label: "Submitted", color: "bg-status-submitted" },
+  { id: "UNDER_REVIEW", label: "Reviewing", color: "bg-status-review" },
+  { id: "INTERVIEW", label: "Interview", color: "bg-status-interview" },
+  { id: "OFFER", label: "Offer", color: "bg-status-offer" },
+  { id: "ACCEPTED", label: "Accepted", color: "bg-status-accepted" },
+  { id: "REJECTED", label: "Rejected", color: "bg-status-rejected" },
 ]
 
 function AdminHeader({ team }: { team: Team }) {
@@ -136,7 +136,7 @@ function StageColumn({
   onSelectApplicant: (application: ApplicationWithDetails) => void
 }) {
   return (
-    <div className="flex-1 min-w-[280px]">
+    <div className="flex-1 min-w-70">
       <div className="flex items-center gap-2 mb-3">
         <div className={`h-3 w-3 rounded-full ${stage.color}`} />
         <h3 className="font-medium text-sm text-foreground">{stage.label}</h3>
@@ -155,7 +155,7 @@ function StageColumn({
             <button
               key={app.id}
               onClick={() => onSelectApplicant(app)}
-              className="w-full p-3 bg-card border border-border rounded-lg text-left hover:border-primary/50 hover:shadow-sm transition-all"
+              className="w-full p-4 bg-card border border-border rounded-lg text-left hover:border-primary/50 hover:shadow-sm transition-all"
             >
               <div className="flex items-start gap-3">
                 <Avatar className="h-8 w-8">
@@ -171,11 +171,11 @@ function StageColumn({
                     {app.subteam?.name || "No subteam"} • {profile?.year}
                   </p>
                   {avgRating && (
-                    <div className="flex items-center gap-0.5 mt-1">
+                    <div className="flex items-center gap-1 mt-1">
                       {Array.from({ length: 5 }).map((_, i) => (
                         <Star
                           key={i}
-                          className={`h-3 w-3 ${i < avgRating ? "text-amber-400 fill-amber-400" : "text-muted-foreground/30"}`}
+                          className={`h-4 w-4 ${i < avgRating ? "text-amber-400 fill-amber-400" : "text-muted-foreground/30"}`}
                         />
                       ))}
                     </div>
@@ -249,7 +249,7 @@ function ApplicantDetailPanel({
             </AvatarFallback>
           </Avatar>
           <div>
-            <h3 className="text-xl font-semibold text-foreground">
+            <h3 className="heading-5">
               {profile?.firstName} {profile?.lastName}
             </h3>
             <p className="text-muted-foreground">{application.student.user.email}</p>
@@ -322,7 +322,7 @@ function ApplicantDetailPanel({
                 className="focus:outline-none disabled:opacity-50"
               >
                 <Star
-                  className={`h-6 w-6 transition-colors ${
+                  className={`h-5 w-5 transition-colors ${
                     i < displayRating
                       ? "text-amber-400 fill-amber-400"
                       : "text-muted-foreground/30 hover:text-amber-200"
@@ -346,7 +346,7 @@ function ApplicantDetailPanel({
               {Array.from({ length: 5 }).map((_, i) => (
                 <Star
                   key={i}
-                  className={`h-5 w-5 ${i < avgRating ? "text-amber-400 fill-amber-400" : "text-muted-foreground/30"}`}
+                  className={`h-4 w-4 ${i < avgRating ? "text-amber-400 fill-amber-400" : "text-muted-foreground/30"}`}
                 />
               ))}
               <span className="ml-2 text-sm text-muted-foreground">{avgRating}/5</span>
@@ -437,7 +437,7 @@ function ApplicantDetailPanel({
           {application.reviewNotes.length > 0 ? (
             <div className="space-y-2">
               {application.reviewNotes.map((note) => (
-                <div key={note.id} className="text-sm text-foreground bg-muted p-3 rounded-lg">
+                <div key={note.id} className="text-sm text-foreground bg-muted p-4 rounded-lg">
                   <p>{note.content}</p>
                   <p className="text-xs text-muted-foreground mt-1">
                     — {note.author.name}

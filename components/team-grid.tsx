@@ -14,7 +14,6 @@ interface TeamGridProps {
 }
 
 export function TeamGrid({ teams, applications, searchQuery, selectedCategory }: TeamGridProps) {
-  const [bookmarkedTeams, setBookmarkedTeams] = useState<Set<string>>(new Set())
   const [currentPage, setCurrentPage] = useState(1)
   const teamsPerPage = 6
 
@@ -31,18 +30,6 @@ export function TeamGrid({ teams, applications, searchQuery, selectedCategory }:
     currentPage * teamsPerPage
   )
 
-  const toggleBookmark = (teamId: string) => {
-    setBookmarkedTeams((prev) => {
-      const newSet = new Set(prev)
-      if (newSet.has(teamId)) {
-        newSet.delete(teamId)
-      } else {
-        newSet.add(teamId)
-      }
-      return newSet
-    })
-  }
-
   const getApplicationForTeam = (teamId: string) => {
     return applications.find((app) => app.teamId === teamId)
   }
@@ -55,14 +42,12 @@ export function TeamGrid({ teams, applications, searchQuery, selectedCategory }:
             key={team.id}
             team={team}
             application={getApplicationForTeam(team.id)}
-            isBookmarked={bookmarkedTeams.has(team.id)}
-            onBookmark={() => toggleBookmark(team.id)}
           />
         ))}
       </div>
       {filteredTeams.length === 0 && (
         <div className="text-center py-12 text-muted-foreground">
-          No teams found matching your criteria
+          No teams match your current filters
         </div>
       )}
       {totalPages > 1 && (

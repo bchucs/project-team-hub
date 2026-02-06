@@ -70,41 +70,41 @@ function getStatusConfig(status: ApplicationStatus) {
       return {
         label: "Submitted",
         icon: Send,
-        color: "text-blue-600",
-        bgColor: "bg-blue-50",
-        borderColor: "border-blue-200",
+        color: "text-status-submitted",
+        bgColor: "bg-status-submitted/10",
+        borderColor: "border-status-submitted/20",
       }
     case "UNDER_REVIEW":
       return {
         label: "Under Review",
         icon: Clock,
-        color: "text-amber-600",
-        bgColor: "bg-amber-50",
-        borderColor: "border-amber-200",
+        color: "text-status-review",
+        bgColor: "bg-status-review/10",
+        borderColor: "border-status-review/20",
       }
     case "INTERVIEW":
       return {
         label: "Interview",
         icon: CalendarDays,
-        color: "text-purple-600",
-        bgColor: "bg-purple-50",
-        borderColor: "border-purple-200",
+        color: "text-status-interview",
+        bgColor: "bg-status-interview/10",
+        borderColor: "border-status-interview/20",
       }
     case "OFFER":
       return {
         label: "Offer Received",
         icon: CheckCircle2,
-        color: "text-emerald-600",
-        bgColor: "bg-emerald-50",
-        borderColor: "border-emerald-200",
+        color: "text-status-offer",
+        bgColor: "bg-status-offer/10",
+        borderColor: "border-status-offer/20",
       }
     case "ACCEPTED":
       return {
         label: "Accepted",
         icon: CheckCircle2,
-        color: "text-emerald-600",
-        bgColor: "bg-emerald-50",
-        borderColor: "border-emerald-200",
+        color: "text-status-accepted",
+        bgColor: "bg-status-accepted/10",
+        borderColor: "border-status-accepted/20",
       }
     case "REJECTED":
       return {
@@ -254,7 +254,7 @@ function UpcomingDeadlines({ applications }: { applications: ApplicationWithDeta
         return (
           <div key={app.id} className="flex items-center gap-4 p-3 rounded-lg border border-border bg-card">
             <div className="text-center w-12">
-              <p className="text-xl font-bold text-primary">{day}</p>
+              <p className="heading-5">{day}</p>
               <p className="text-xs text-muted-foreground uppercase">{month}</p>
             </div>
             <div className="flex-1 min-w-0">
@@ -311,19 +311,19 @@ export function ApplicationsDashboard({ applications, user }: ApplicationsDashbo
           </Card>
           <Card>
             <CardContent className="pt-6">
-              <p className="text-2xl font-bold text-blue-600">{stats.inProgress}</p>
+              <p className="heading-3 text-status-draft">{stats.inProgress}</p>
               <p className="text-sm text-muted-foreground">In Progress</p>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="pt-6">
-              <p className="text-2xl font-bold text-amber-600">{stats.pending}</p>
+              <p className="heading-3 text-status-review">{stats.pending}</p>
               <p className="text-sm text-muted-foreground">Under Review</p>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="pt-6">
-              <p className="text-2xl font-bold text-emerald-600">{stats.offers}</p>
+              <p className="heading-3 text-status-offer">{stats.offers}</p>
               <p className="text-sm text-muted-foreground">Offers Received</p>
             </CardContent>
           </Card>

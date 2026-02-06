@@ -29,7 +29,7 @@ export function BrowseTeams({ teams, categories, stats, applications = [], user 
   return (
     <div className="min-h-screen bg-background">
       <Header user={user} />
-      <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 space-y-6">
+      <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 md:px-8 space-y-6">
         <StatsCards stats={stats} />
         <SearchFilters
           searchQuery={searchQuery}

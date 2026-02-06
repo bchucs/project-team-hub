@@ -28,6 +28,13 @@
   --chart-3: oklch(0.6 0.12 185);
   --chart-4: oklch(0.7 0.18 330);
   --chart-5: oklch(0.65 0.15 85);
+  --status-draft: oklch(0.7 0.05 250);
+  --status-submitted: oklch(0.6 0.18 150);
+  --status-review: oklch(0.65 0.15 50);
+  --status-interview: oklch(0.6 0.15 280);
+  --status-offer: oklch(0.6 0.18 150);
+  --status-accepted: oklch(0.55 0.18 150);
+  --status-rejected: oklch(0.6 0.15 20);
   --radius: 0.625rem;
   --sidebar: oklch(1 0 0);
   --sidebar-foreground: oklch(0.2 0.02 250);
@@ -64,6 +71,13 @@
   --chart-3: oklch(0.65 0.12 185);
   --chart-4: oklch(0.75 0.16 330);
   --chart-5: oklch(0.7 0.14 85);
+  --status-draft: oklch(0.4 0.05 250);
+  --status-submitted: oklch(0.5 0.18 150);
+  --status-review: oklch(0.55 0.15 50);
+  --status-interview: oklch(0.5 0.15 280);
+  --status-offer: oklch(0.5 0.18 150);
+  --status-accepted: oklch(0.45 0.18 150);
+  --status-rejected: oklch(0.5 0.15 20);
   --sidebar: oklch(0.16 0.01 250);
   --sidebar-foreground: oklch(0.95 0.005 250);
   --sidebar-primary: oklch(0.58 0.18 25);
@@ -101,6 +115,13 @@
   --color-chart-3: var(--chart-3);
   --color-chart-4: var(--chart-4);
   --color-chart-5: var(--chart-5);
+  --color-status-draft: var(--status-draft);
+  --color-status-submitted: var(--status-submitted);
+  --color-status-review: var(--status-review);
+  --color-status-interview: var(--status-interview);
+  --color-status-offer: var(--status-offer);
+  --color-status-accepted: var(--status-accepted);
+  --color-status-rejected: var(--status-rejected);
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
@@ -121,5 +142,47 @@
   }
   body {
     @apply bg-background text-foreground;
+  }
+}
+
+@layer utilities {
+  .focus-ring {
+    @apply focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px];
+  }
+
+  .heading-display {
+    @apply text-5xl font-bold leading-tight;
+  }
+
+  .heading-1 {
+    @apply text-4xl font-bold leading-tight;
+  }
+
+  .heading-2 {
+    @apply text-3xl font-semibold leading-snug;
+  }
+
+  .heading-3 {
+    @apply text-2xl font-semibold leading-snug;
+  }
+
+  .heading-4 {
+    @apply text-xl font-semibold leading-normal;
+  }
+
+  .heading-5 {
+    @apply text-lg font-medium leading-normal;
+  }
+
+  .body-large {
+    @apply text-base font-normal leading-relaxed;
+  }
+
+  .body {
+    @apply text-sm font-normal leading-relaxed;
+  }
+
+  .body-small {
+    @apply text-xs font-normal leading-normal;
   }
 }

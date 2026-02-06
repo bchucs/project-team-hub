@@ -32,12 +32,12 @@ interface AdminApplicationViewProps {
 }
 
 const pipelineStages = [
-  { id: "SUBMITTED", label: "Submitted", color: "bg-blue-500" },
-  { id: "UNDER_REVIEW", label: "Reviewing", color: "bg-amber-500" },
-  { id: "INTERVIEW", label: "Interview", color: "bg-purple-500" },
-  { id: "OFFER", label: "Offer", color: "bg-emerald-500" },
-  { id: "ACCEPTED", label: "Accepted", color: "bg-emerald-600" },
-  { id: "REJECTED", label: "Rejected", color: "bg-gray-400" },
+  { id: "SUBMITTED", label: "Submitted", color: "bg-status-submitted" },
+  { id: "UNDER_REVIEW", label: "Reviewing", color: "bg-status-review" },
+  { id: "INTERVIEW", label: "Interview", color: "bg-status-interview" },
+  { id: "OFFER", label: "Offer", color: "bg-status-offer" },
+  { id: "ACCEPTED", label: "Accepted", color: "bg-status-accepted" },
+  { id: "REJECTED", label: "Rejected", color: "bg-status-rejected" },
 ]
 
 export function AdminApplicationView({ application, reviewerId }: AdminApplicationViewProps) {
@@ -116,7 +116,7 @@ export function AdminApplicationView({ application, reviewerId }: AdminApplicati
         <div className="mb-6">
           <div className="flex items-start justify-between mb-4">
             <div>
-              <h1 className="text-3xl font-bold text-foreground mb-2">
+              <h1 className="heading-2 mb-2">
                 {cycle.team.name} Application
               </h1>
               <p className="text-muted-foreground">

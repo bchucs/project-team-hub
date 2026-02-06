@@ -4,6 +4,7 @@ import { useState, useCallback, useRef, useTransition } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { ArrowLeft, Check, Clock, Save, Loader2 } from "lucide-react"
+import { toast } from "sonner"
 import { Header } from "@/components/header"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -181,7 +182,7 @@ export function ApplicationForm({ team, studentId, existingApplication, question
     startTransition(async () => {
       if (!applicationId) {
         // No application saved yet - show success for demo purposes
-        alert("Application submitted successfully! (Demo mode - no recruiting cycle active)")
+        toast.success("Application submitted successfully")
         router.push(`/teams/${team.slug}`)
         return
       }
@@ -189,7 +190,7 @@ export function ApplicationForm({ team, studentId, existingApplication, question
       try {
         const result = await submitApplication(applicationId)
         if (result.success) {
-          alert("Application submitted successfully!")
+          toast.success("Application submitted successfully")
           router.push("/applications")
         } else {
           setError(result.error || "Failed to submit application")
@@ -291,7 +292,7 @@ export function ApplicationForm({ team, studentId, existingApplication, question
                     </div>
                   ))}
                   <div className="pt-4 border-t border-border">
-                    <div className="flex items-start gap-3 p-4 rounded-lg bg-muted">
+                    <div className="flex items-start gap-3 p-6 rounded-lg bg-muted">
                       <Clock className="h-5 w-5 text-muted-foreground mt-0.5" />
                       <div>
                         <p className="text-sm font-medium text-foreground">
@@ -361,7 +362,7 @@ export function ApplicationForm({ team, studentId, existingApplication, question
                       className="space-y-3"
                     >
                       {currentQuestion.options.map((option) => (
-                        <div key={option} className="flex items-center space-x-3">
+                        <div key={option} className="flex items-center space-x-4">
                           <RadioGroupItem value={option} id={`${currentQuestion.id}-${option}`} />
                           <Label htmlFor={`${currentQuestion.id}-${option}`} className="font-normal cursor-pointer">
                             {option}

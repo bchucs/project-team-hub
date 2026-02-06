@@ -7,7 +7,6 @@ import {
   Calendar,
   Globe,
   Mail,
-  Bookmark,
   Instagram,
   ExternalLink,
 } from "lucide-react"
@@ -64,8 +63,8 @@ export function TeamDetail({ team, user, applicationStatus }: TeamDetailProps) {
             {team.category}
           </Badge>
           <div className="absolute bottom-6 left-6 flex items-end gap-4">
-            <div className="flex h-20 w-20 items-center justify-center rounded-xl bg-white/20 backdrop-blur">
-              <span className="text-4xl font-bold text-white">
+            <div className="flex h-20 w-20 items-center justify-center rounded-lg bg-white/20 backdrop-blur">
+              <span className="text-3xl font-bold text-white">
                 {team.name.charAt(0)}
               </span>
             </div>
@@ -253,7 +252,7 @@ export function TeamDetail({ team, user, applicationStatus }: TeamDetailProps) {
               </CardContent>
             </Card>
 
-            <div className="space-y-3">
+            <div>
               {team.isRecruiting ? (
                 applicationStatus && ["SUBMITTED", "UNDER_REVIEW", "INTERVIEW", "OFFER", "ACCEPTED", "REJECTED"].includes(applicationStatus) ? (
                   <Button className="w-full" disabled>
@@ -273,10 +272,6 @@ export function TeamDetail({ team, user, applicationStatus }: TeamDetailProps) {
                   Not Currently Recruiting
                 </Button>
               )}
-              <Button variant="outline" className="w-full gap-2 bg-transparent">
-                <Bookmark className="h-4 w-4" />
-                Save for Later
-              </Button>
             </div>
 
             {team.foundedYear && (
